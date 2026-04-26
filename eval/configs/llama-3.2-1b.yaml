@@ -1,0 +1,18 @@
+model_id: meta-llama/Llama-3.2-1B-Instruct
+description: Llama 3.2 1B Instruct — small model for fast CI
+precision: bfloat16
+compress_patterns:
+  - ".*\\.self_attn\\.(q_proj|k_proj|v_proj|o_proj)"
+  - ".*\\.mlp\\.(gate_proj|up_proj|down_proj)"
+  - "model\\.embed_tokens"
+  - "lm_head"
+eval_suite:
+  - bit_identity
+  - output_equivalence
+  - benchmarks
+  - performance
+  - memory
+expected_compression_ratio: 0.71  # ±0.5%
+expected_mmlu_accuracy_delta: 0.0  # exact match with BF16 reference
+expected_perplexity_delta: 0.0     # exact match
+prompt_file: eval/prompts/50_prompts.txt

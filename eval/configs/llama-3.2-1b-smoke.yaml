@@ -1,0 +1,13 @@
+model_id: meta-llama/Llama-3.2-1B-Instruct
+description: Llama 3.2 1B Instruct real-model smoke test
+precision: bfloat16
+compress_patterns:
+  - ".*\\.self_attn\\.(q_proj|k_proj|v_proj|o_proj)"
+  - ".*\\.mlp\\.(gate_proj|up_proj|down_proj)"
+  - "model\\.embed_tokens"
+  - "lm_head"
+eval_suite:
+  - output_equivalence
+prompt_file: eval/prompts/smoke_prompt.txt
+prompt_limit: 1
+max_new_tokens: 8

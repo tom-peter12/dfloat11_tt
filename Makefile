@@ -62,10 +62,9 @@ eval-all: prompts
 # ---------------------------------------------------------------------------
 # Visualizer
 # ---------------------------------------------------------------------------
-viz: results/aggregate.json
-	@echo "=== Launching visualizer on http://localhost:8080 ==="
-	$(PYTHON) -m uvicorn dfloat11_tt.viz.server:app \
-	    --host 0.0.0.0 --port 8080 --reload
+viz:
+	@echo "Open viz/dfloat11_tt_presentation.ipynb in Jupyter or VS Code and run all cells."
+	@echo "Use the same Python environment used for the pipeline."
 
 results/aggregate.json:
 	@echo "No aggregate.json found. Run 'make eval-all' first."

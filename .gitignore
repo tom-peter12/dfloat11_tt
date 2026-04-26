@@ -6,4 +6,6 @@ build
 compressed
 .codex
 *.so
-eval/
+results/
+generated/
+.matplotlib_cache/

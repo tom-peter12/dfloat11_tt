@@ -21,7 +21,7 @@ python -m dfloat11_tt.compress \
 # 3. Run evaluation (requires Blackhole device)
 make eval-1b
 
-# 4. Launch visualizer
+# 4. Open the visualization notebook
 make viz
 ```
 
@@ -55,6 +55,6 @@ host/         Metalium Program assembly and launch
 op/           TT-NN op registration + Python pybind
 nn/           DF11Linear, DF11TransformerBlock, HF patch
 eval/         Multi-model testing pipeline
-viz/          FastAPI visualizer
+viz/          Presentation notebook
 tests/        Unit + integration tests
 ```

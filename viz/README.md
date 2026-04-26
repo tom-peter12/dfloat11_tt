@@ -1,29 +1,22 @@
-# DFloat11-TT Visualizer
+# DFloat11-TT Visualization
 
-A FastAPI + vanilla JS web dashboard for exploring compression and performance results.
+The presentation visuals live in one notebook:
 
-## Launch
-
-```bash
-make viz
-# or directly:
-python -m uvicorn dfloat11_tt.viz.server:app --host 0.0.0.0 --port 8080
+```text
+viz/dfloat11_tt_presentation.ipynb
 ```
 
-Opens at http://localhost:8080
+Open it in Jupyter or VS Code after running one of the model pipelines, then
+run all cells. It uses `pandas`, `matplotlib`, and `seaborn`.
 
-## Views
+The notebook reads:
 
-1. **Compression**: bar charts of original vs compressed size per model; per-layer-type ratio breakdown.
-2. **Performance**: decompression throughput (GB/s) vs matrix size; token decode latency vs batch size.
-3. **Architecture**: animated side-by-side visualization of NVIDIA GPU (CUDA blocks) vs Tenstorrent Blackhole (Tensix cores) executing a transformer block decompression. Exportable as standalone HTML.
-4. **Compare Models**: side-by-side model comparison card.
+```text
+results/aggregate.json
+compressed/*.df11tt
+eval/configs/*.yaml
+```
 
-## Data source
-
-The dashboard reads `results/aggregate.json` produced by `make eval-all`.
-If no results exist, the dashboard shows empty charts.
-
-## Export
-
-Each chart has a "Download PNG" button. The Architecture view has "Export Standalone HTML" which produces a self-contained `df11tt_architecture.html` suitable for offline presentation.
+It shows compression size, per-module compression breakdown, BF16 vs DF11
+generation timing when timing fields are available, output completions, LUT
+depth distribution, and the largest compressed tensors.

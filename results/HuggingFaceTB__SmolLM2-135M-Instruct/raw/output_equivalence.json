@@ -32,7 +32,23 @@
         30,
         7042,
         314
-      ]
+      ],
+      "ref_new_tokens": [
+        7042,
+        30,
+        7042,
+        314
+      ],
+      "df11_new_tokens": [
+        7042,
+        30,
+        7042,
+        314
+      ],
+      "ref_text": "The capital of France is Paris. Paris is",
+      "df11_text": "The capital of France is Paris. Paris is",
+      "ref_completion": " Paris. Paris is",
+      "df11_completion": " Paris. Paris is"
     }
   ]
 }

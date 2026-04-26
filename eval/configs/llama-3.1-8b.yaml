@@ -1,0 +1,18 @@
+model_id: meta-llama/Llama-3.1-8B-Instruct
+description: Llama 3.1 8B Instruct — primary evaluation model
+precision: bfloat16
+compress_patterns:
+  - ".*\\.self_attn\\.(q_proj|k_proj|v_proj|o_proj)"
+  - ".*\\.mlp\\.(gate_proj|up_proj|down_proj)"
+  - "model\\.embed_tokens"
+  - "lm_head"
+eval_suite:
+  - bit_identity
+  - output_equivalence
+  - benchmarks
+  - performance
+  - memory
+expected_compression_ratio: 0.70  # ±0.5%
+expected_mmlu_accuracy_delta: 0.0
+expected_perplexity_delta: 0.0
+prompt_file: eval/prompts/50_prompts.txt

@@ -83,6 +83,30 @@ If Llama access fails, run:
 huggingface-cli login
 ```
 
+## 7. Open The Visualization Notebook
+
+After at least one model run finishes:
+
+```bash
+make viz
+```
+
+Then open:
+
+```text
+viz/dfloat11_tt_presentation.ipynb
+```
+
+Run all cells. In VS Code, select the same Python environment used for the
+pipeline, usually:
+
+```text
+$TT_METAL_HOME/python_env/bin/python3
+```
+
+The notebook uses `pandas`, `matplotlib`, and `seaborn`. These are included in
+the tested environment; install them in the selected Python env if needed.
+
 ## Output
 
 Results are written to:

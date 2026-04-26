@@ -158,18 +158,19 @@ Each YAML lists: HF model id, target precision, target patterns of layers to com
 
 A top-level `make eval-all` (or `python -m dfloat11_tt.eval --all`) runs every config and produces `results/aggregate.json` for the visualizer.
 
-### Phase 5 — Visualizer (for the presentation)
+### Phase 5 — Visualization Notebook (for the presentation)
 Path: `dfloat11_tt/viz/`
 
-Build a **standalone Python web app** (FastAPI backend + a single-page frontend, vanilla HTML/CSS/JS or React, your call — keep it simple but presentable). It reads `results/aggregate.json` and renders:
+Build a simple notebook that reads `results/aggregate.json`, the eval YAMLs,
+and the compressed bundle headers. It should render:
 
-1. **Compression dashboard**: per-model bar chart of original size vs DF11 size; effective bit-width gauge; per-layer-type compression-ratio breakdown (q_proj vs k_proj vs gate_proj …); exponent-frequency histogram and Huffman-tree visualization for one selected layer.
-2. **Performance dashboard**: throughput vs batch size for BF16 (CPU offload) vs DF11 (on-device); decompression throughput vs matrix size (this directly mirrors paper Figure 7); latency breakdown stacked bar (mirror Figure 6); generation-length-until-OOM line plot.
+1. **Compression view**: per-model bar chart of original size vs DF11 size; effective bit-width gauge; per-layer-type compression-ratio breakdown (q_proj vs k_proj vs gate_proj …); exponent-frequency histogram and Huffman-tree visualization for one selected layer.
+2. **Performance view**: throughput vs batch size for BF16 (CPU offload) vs DF11 (on-device); decompression throughput vs matrix size (this directly mirrors paper Figure 7); latency breakdown stacked bar (mirror Figure 6); generation-length-until-OOM line plot.
 3. **Architecture explainer**: an animated SVG showing **side-by-side** how DFloat11 maps to NVIDIA GPU vs Tenstorrent Blackhole — grid of 140 Tensix cores light up as a transformer block is decompressed, with a parallel CUDA-block visualization. This is what sells the talk: visually communicates the architectural mapping you justified in `INVESTIGATION.md`. Use real per-core timings extracted from `tt-metal` profiler output where available; otherwise, synthesize plausible animation timing from the measured per-block latency.
 4. **Live model comparison**: dropdown to pick two models from the eval set; renders a side-by-side comparison card.
-5. **Export-to-slides mode**: each chart has a "Download PNG" + a "Download standalone HTML" button. The architecture explainer specifically should export as a self-contained HTML file that runs offline in a browser during the presentation.
+5. **Slide-friendly cells**: compact charts and tables that can be screenshotted or copied into slides.
 
-Deliver: `dfloat11_tt/viz/README.md` with launch instructions; `make viz` should serve it on localhost.
+Deliver: `dfloat11_tt/viz/dfloat11_tt_presentation.ipynb` and `dfloat11_tt/viz/README.md` with open/run instructions.
 
 ---
 
@@ -216,9 +217,7 @@ dfloat11_tt/
 │   ├── test_memory.py
 │   └── runner.py
 ├── viz/
-│   ├── server.py                      # FastAPI
-│   ├── static/
-│   ├── templates/
+│   ├── dfloat11_tt_presentation.ipynb # presentation visuals
 │   └── README.md
 └── tests/                             # unit tests for kernels + Python
     ├── test_huffman.py

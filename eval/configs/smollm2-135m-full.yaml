@@ -1,0 +1,17 @@
+model_id: HuggingFaceTB/SmolLM2-135M-Instruct
+description: "SmolLM2 135M full DFloat11 pipeline: embedding + transformer linears + lm_head"
+precision: bfloat16
+bundle_path: compressed/smollm2-135m-full.df11tt
+results_dir: results/smollm2-135m-full/raw
+compress_patterns:
+  - "model\\.embed_tokens"
+  - ".*\\.self_attn\\.(q_proj|k_proj|v_proj|o_proj)"
+  - ".*\\.mlp\\.(gate_proj|up_proj|down_proj)"
+  - "lm_head"
+eval_suite:
+  - output_equivalence
+prompt_file: eval/prompts/smoke_prompt.txt
+prompt_limit: 1
+max_new_tokens: 16
+compare_logits: false
+wrap_blocks: false
