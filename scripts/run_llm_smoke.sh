@@ -2,7 +2,14 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TT_METAL_HOME="${TT_METAL_HOME:-/home/tomasissac/tt-metal}"
+if [[ -z "${TT_METAL_HOME:-}" ]]; then
+    if [[ -d "$REPO_ROOT/../tt-metal" ]]; then
+        TT_METAL_HOME="$(cd "$REPO_ROOT/../tt-metal" && pwd)"
+    else
+        echo "Set TT_METAL_HOME to your tt-metal checkout." >&2
+        exit 1
+    fi
+fi
 PYTHON_BIN="${PYTHON_BIN:-$TT_METAL_HOME/python_env/bin/python3}"
 CONFIG="${1:-eval/configs/smollm2-135m-one-layer-smoke.yaml}"
 

@@ -1,29 +1,39 @@
 # DFloat11-TT Reproduction Runbook
 
-This is the short path to reproduce the working DFloat11 pipeline on the
-Tenstorrent Blackhole machine.
+This is the short path to reproduce the working DFloat11 pipeline after cloning
+the repo on a Tenstorrent Blackhole machine.
 
-The tested setup on `tt-blackhole-02` is:
+Expected setup:
 
-- repo: `/home/tomasissac/dfloat11_tt`
-- tt-metal: `/home/tomasissac/tt-metal`
-- Python: `/home/tomasissac/tt-metal/python_env/bin/python3`
+- this repo cloned locally
+- `tt-metal` built locally
+- `TT_METAL_HOME` set to the local `tt-metal` checkout
 - hardware: Blackhole P150 with 4 chips visible in `tt-smi`
-- pipeline device selection: expose PCI device `0`, then open TT-Metal device id `3`
+- tested pipeline device selection: expose PCI device `0`, then open TT-Metal device id `3`
 
-## 1. Enter The Repo
+## 1. Clone And Enter The Repo
 
 ```bash
-cd /home/tomasissac/dfloat11_tt
+git clone <repo-url> dfloat11_tt
+cd dfloat11_tt
 ```
 
-If your checkout is somewhere else, `cd` there instead. The scripts derive
-`PYTHONPATH` from the repo location.
+Replace `<repo-url>` with the actual repository URL.
+
+The scripts derive `PYTHONPATH` from the repo location, so the checkout does not
+need to live under a specific username or directory.
 
 ## 2. Build The C++/TTNN Extension
 
 ```bash
-export TT_METAL_HOME=/home/tomasissac/tt-metal
+export TT_METAL_HOME=/path/to/tt-metal
+make build TT_METAL_HOME="$TT_METAL_HOME" PYTHON="$TT_METAL_HOME/python_env/bin/python3"
+```
+
+Example if `tt-metal` is next to this repo:
+
+```bash
+export TT_METAL_HOME="$(cd ../tt-metal && pwd)"
 make build TT_METAL_HOME="$TT_METAL_HOME" PYTHON="$TT_METAL_HOME/python_env/bin/python3"
 ```
 
@@ -34,7 +44,7 @@ This installs `dfloat11_tt_cpp.cpython-310-x86_64-linux-gnu.so` into the repo ro
 The scripts set this automatically, but this is the explicit environment:
 
 ```bash
-export TT_METAL_HOME=/home/tomasissac/tt-metal
+export TT_METAL_HOME=/path/to/tt-metal
 export TT_METAL_VISIBLE_DEVICES=0
 export TT_MESH_GRAPH_DESC_PATH="$TT_METAL_HOME/tt_metal/fabric/mesh_graph_descriptors/p150_mesh_graph_descriptor.textproto"
 export DFLOAT11_TT_DEVICE_ID=3
@@ -42,8 +52,9 @@ export DFLOAT11_CACHE_WEIGHTS=1
 export DFLOAT11_TRACE_LINEAR=1
 ```
 
-On this machine, `TT_METAL_VISIBLE_DEVICES=0` maps to `DFLOAT11_TT_DEVICE_ID=3`.
-That mismatch is expected for this box.
+On the tested Blackhole machine, `TT_METAL_VISIBLE_DEVICES=0` maps to
+`DFLOAT11_TT_DEVICE_ID=3`. If your machine maps devices differently, adjust
+`DFLOAT11_TT_DEVICE_ID` after confirming with a tiny `ttnn.open_device()` check.
 
 ## 4. Optional Sanity Tests
 
@@ -239,12 +250,27 @@ echo "$TT_METAL_VISIBLE_DEVICES"
 echo "$DFLOAT11_TT_DEVICE_ID"
 ```
 
-For this machine, use:
+On the tested Blackhole box, this was the working one-device selection:
 
 ```bash
 export TT_METAL_VISIBLE_DEVICES=0
 export DFLOAT11_TT_DEVICE_ID=3
 ```
+
+If that mapping is different on your machine, try opening the visible device
+manually:
+
+```bash
+env \
+  TT_METAL_HOME="$TT_METAL_HOME" \
+  TT_METAL_VISIBLE_DEVICES=0 \
+  TT_MESH_GRAPH_DESC_PATH="$TT_MESH_GRAPH_DESC_PATH" \
+  PYTHONPATH="$(dirname "$PWD")" \
+  "$TT_METAL_HOME/python_env/bin/python3" -c 'import ttnn; d=ttnn.open_device(device_id=3); ttnn.close_device(d); print("device ok")'
+```
+
+Change `device_id=3` and `DFLOAT11_TT_DEVICE_ID` if your setup uses a different
+logical TT-Metal id.
 
 If fabric mapping fails, make sure this descriptor is set:
 
