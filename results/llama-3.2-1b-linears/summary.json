@@ -1,0 +1,44 @@
+{
+  "model_id": "meta-llama/Llama-3.2-1B-Instruct",
+  "config": "eval/configs/llama-3.2-1b-linears.yaml",
+  "output_equivalence": {
+    "model_id": "meta-llama/Llama-3.2-1B-Instruct",
+    "test": "output_equivalence",
+    "all_pass": true,
+    "n_prompts": 1,
+    "n_fail": 0,
+    "results": [
+      {
+        "prompt_idx": 0,
+        "prompt": "The capital of France is",
+        "tokens_match": true,
+        "logits_match": true,
+        "passed": true,
+        "ref_tokens": [
+          128000,
+          791,
+          6864,
+          315,
+          9822,
+          374,
+          12366,
+          13,
+          578,
+          469
+        ],
+        "df11_tokens": [
+          128000,
+          791,
+          6864,
+          315,
+          9822,
+          374,
+          12366,
+          13,
+          578,
+          469
+        ]
+      }
+    ]
+  }
+}

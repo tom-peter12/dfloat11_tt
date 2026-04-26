@@ -1,0 +1,38 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "test": "output_equivalence",
+  "all_pass": false,
+  "n_prompts": 1,
+  "n_fail": 1,
+  "results": [
+    {
+      "prompt_idx": 0,
+      "prompt": "The capital of France is",
+      "tokens_match": false,
+      "logits_match": true,
+      "passed": false,
+      "ref_tokens": [
+        785,
+        6722,
+        315,
+        9625,
+        374,
+        12095,
+        13,
+        1084,
+        572
+      ],
+      "df11_tokens": [
+        785,
+        6722,
+        315,
+        9625,
+        374,
+        12095,
+        13,
+        1084,
+        374
+      ]
+    }
+  ]
+}

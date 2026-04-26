@@ -1,0 +1,42 @@
+{
+  "model_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "config": "eval/configs/smollm2-135m-one-layer-smoke.yaml",
+  "output_equivalence": {
+    "model_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+    "test": "output_equivalence",
+    "all_pass": true,
+    "n_prompts": 1,
+    "n_fail": 0,
+    "results": [
+      {
+        "prompt_idx": 0,
+        "prompt": "The capital of France is",
+        "tokens_match": true,
+        "logits_match": true,
+        "passed": true,
+        "ref_tokens": [
+          504,
+          3575,
+          282,
+          4649,
+          314,
+          7042,
+          30,
+          7042,
+          314
+        ],
+        "df11_tokens": [
+          504,
+          3575,
+          282,
+          4649,
+          314,
+          7042,
+          30,
+          7042,
+          314
+        ]
+      }
+    ]
+  }
+}
