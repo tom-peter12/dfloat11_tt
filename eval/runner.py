@@ -76,9 +76,15 @@ def run_config(config_path: Path, tt_device: Optional[Any] = None) -> Dict:
     prompt_file  = ROOT / cfg.get("prompt_file", "eval/prompts/50_prompts.txt")
     max_new_tokens = int(cfg.get("max_new_tokens", 50))
     prompt_limit = cfg.get("prompt_limit")
-    compare_logits = bool(cfg.get("compare_logits", True))
     wrap_blocks = bool(cfg.get("wrap_blocks", True))
-    reference_backend = str(cfg.get("reference_backend", "cpu"))
+    reference_backend = str(cfg.get("reference_backend", "ttnn" if tt_device is not None else "cpu"))
+    compare_logits = bool(cfg.get("compare_logits", reference_backend == "ttnn"))
+    if reference_backend == "ttnn" and tt_device is not None and not compare_logits:
+        logger.warning(
+            "reference_backend=ttnn requires logits for a meaningful equivalence verdict; "
+            "forcing compare_logits=True."
+        )
+        compare_logits = True
     expected_ratio = cfg.get("expected_compression_ratio", 0.71)
 
     # Keep this guard for direct run_config() callers. The CLI calls ensure_bundle()

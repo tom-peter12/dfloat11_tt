@@ -203,19 +203,19 @@ DFloat11DecompressDeviceOp::MultiCore::create(
 
         uint32_t thr_start   = blk_start * attrs.T;
         uint32_t thr_end     = blk_end   * attrs.T;
-        uint32_t byte_start  = thr_start * attrs.n;
-        uint32_t byte_end    = std::min<uint32_t>(thr_end * attrs.n,
-                                                   static_cast<uint32_t>(attrs.n_bytes));
+        uint32_t byte_start  = attrs.bit_starts_host[ci] / 8u;
+        uint32_t byte_end    = static_cast<uint32_t>(attrs.n_bytes);
 
         uint32_t gsb = gap_byte_for_thread(thr_start);
         uint32_t geb = gap_byte_for_thread(thr_end) + 2u;
         uint32_t gbc = geb - gsb;
 
         uint32_t core_elem_start = attrs.elem_starts_host[ci];
+        uint32_t core_elem_count = attrs.elem_counts_host[ci];
         uint32_t core_bit_start  = attrs.bit_starts_host[ci];
 
         uint64_t elem_start = static_cast<uint64_t>(core_elem_start);
-        uint64_t elem_count = static_cast<uint64_t>(attrs.elem_counts_host[ci]);
+        uint64_t elem_count = static_cast<uint64_t>(core_elem_count);
         uint64_t elem_end   = elem_start + elem_count;
 
         if (elem_end > attrs.n_elements) elem_end = attrs.n_elements;
@@ -281,6 +281,7 @@ DFloat11DecompressDeviceOp::MultiCore::create(
             n_pages_core,
             core_elem_start,
             core_bit_start,
+            core_elem_count,
         });
 
         auto cid = CreateKernel(program, DF11_KERNEL_PREFIX "decompress_df11.cpp", core,
@@ -306,6 +307,8 @@ DFloat11DecompressDeviceOp::MultiCore::create(
             page_start,
             n_pages_core,
             total_output_bytes,
+            core_elem_start,
+            core_elem_count,
         });
 
         block_cursor = blk_end;
@@ -383,20 +386,19 @@ void DFloat11DecompressDeviceOp::MultiCore::override_runtime_arguments(
 
         uint32_t thr_start  = blk_start * attrs.T;
         uint32_t thr_end    = blk_end   * attrs.T;
-        uint32_t byte_start = thr_start * attrs.n;
-        uint32_t byte_end   = std::min<uint32_t>(
-            thr_end * attrs.n,
-            static_cast<uint32_t>(attrs.n_bytes));
+        uint32_t byte_start = attrs.bit_starts_host[ci] / 8u;
+        uint32_t byte_end   = static_cast<uint32_t>(attrs.n_bytes);
 
         uint32_t gsb = gap_byte_for_thread(thr_start);
         uint32_t geb = gap_byte_for_thread(thr_end) + 2u;
         uint32_t gbc = geb - gsb;
 
         uint32_t core_elem_start = attrs.elem_starts_host[ci];
+        uint32_t core_elem_count = attrs.elem_counts_host[ci];
         uint32_t core_bit_start  = attrs.bit_starts_host[ci];
 
         uint64_t elem_start = static_cast<uint64_t>(core_elem_start);
-        uint64_t elem_count = static_cast<uint64_t>(attrs.elem_counts_host[ci]);
+        uint64_t elem_count = static_cast<uint64_t>(core_elem_count);
         uint64_t elem_end   = elem_start + elem_count;
 
         if (elem_end > attrs.n_elements) elem_end = attrs.n_elements;
@@ -427,6 +429,7 @@ void DFloat11DecompressDeviceOp::MultiCore::override_runtime_arguments(
             ra[23] = n_pages_core;
             ra[24] = core_elem_start;
             ra[25] = core_bit_start;
+            ra[26] = core_elem_count;
         }
         {
             auto& ra = GetRuntimeArgs(prog, sv.writer_ids[ci], core);
@@ -434,6 +437,8 @@ void DFloat11DecompressDeviceOp::MultiCore::override_runtime_arguments(
             ra[1] = page_start;
             ra[2] = n_pages_core;
             ra[3] = total_output_bytes;
+            ra[4] = core_elem_start;
+            ra[5] = core_elem_count;
         }
 
         block_cursor = blk_end;

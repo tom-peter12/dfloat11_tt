@@ -1,4 +1,4 @@
-"""Compute correct, page-aligned per-core ranges for the DF11 device decoder.
+"""Compute correct per-core ranges for the DF11 device decoder.
 
 The reader kernel in ``kernels/reader_df11.cpp`` is a *purely sequential*
 Huffman decoder: each core starts at ``core_bit_start`` (an absolute bit
@@ -16,22 +16,15 @@ Two correctness constraints must hold for the host-side split:
    formula ``blk_start * T * n * 8`` assumed block storage boundaries are
    aligned with code starts, which they are not.
 
-2. ``core_elem_start`` must be a multiple of ``page_elements`` (the number
-   of BF16 elements in one row-major output page, equal to ``C_pad``).
-   The kernel writes decoded element ``i`` to ``page_buf[i * 2]`` and the
-   host does ``page_start = (elem_start * 2) // page_size`` (rounding down).
-   When ``elem_start`` is not page-aligned, those two computations point at
-   different elements and the writeback is shifted by up to ``C_pad - 1``
-   elements per core.
+2. Cores may start/end in the middle of an output page. The kernel must write
+   only the byte range owned by that core for the first/last page, otherwise
+   adjacent cores can clobber each other's page fragments.
 
-This module computes both: it walks the encoded bitstream once on the host
-to record the bit position at every page boundary, then assigns each core a
-contiguous, page-aligned chunk of the output (one chunk per core).
-
-Cost for multi-core splits: a single pass over ``n_elements`` Huffman
-lookups in pure Python. For full-model bundles this is too expensive to do
-silently at load time, so the default is single-core splitting. Set
-``DFLOAT11_MAX_CORES`` above 1 to enable page-aligned multi-core splits.
+The default split is page-aligned. That keeps all device reads/writes on stable
+row/page boundaries while still using many cores. Bit starts are computed only
+for the page boundaries assigned to active cores, so model load does not need a
+full Python walk of every symbol. ``DFLOAT11_SPLIT_MODE=block`` is kept as an
+experimental/debug split for the partial-page path.
 """
 from __future__ import annotations
 
@@ -40,17 +33,29 @@ from typing import Dict, Tuple
 
 import numpy as np
 
+
 def _default_max_cores() -> int:
-    raw = os.environ.get("DFLOAT11_MAX_CORES", "1")
+    raw = os.environ.get("DFLOAT11_MAX_CORES", "30")
     try:
         return max(1, int(raw))
     except ValueError:
         return 1
 
 
-# Single-core avoids the expensive Python bitstream walk for full-model startup.
+# Default to multicore; page splitting is the correctness-preserving default.
 DEFAULT_MAX_CORES = _default_max_cores()
 _PTR_MIN = 240
+
+
+def _extract_gap(gaps: np.ndarray, thread_id: int) -> int:
+    bit_pos = thread_id * 5
+    byte_idx = bit_pos // 8
+    if byte_idx >= len(gaps):
+        return 0
+    byte_low = int(gaps[byte_idx])
+    byte_high = int(gaps[byte_idx + 1]) if byte_idx + 1 < len(gaps) else 0
+    short_be = (byte_low << 8) | byte_high
+    return (short_be >> (11 - (bit_pos % 8))) & 0x1F
 
 
 def _walk_bit_positions(
@@ -145,6 +150,108 @@ def _walk_bit_positions(
     return page_bit_starts
 
 
+def _lookup_code_len(encoded: np.ndarray, luts: np.ndarray, k: int, n_bytes: int, bit_pos: int) -> int:
+    byte_idx = bit_pos >> 3
+    bit_gap = bit_pos & 7
+
+    end = byte_idx + 8
+    if end <= n_bytes:
+        chunk = encoded[byte_idx:end]
+        buf = (
+            (int(chunk[0]) << 56) | (int(chunk[1]) << 48) |
+            (int(chunk[2]) << 40) | (int(chunk[3]) << 32) |
+            (int(chunk[4]) << 24) | (int(chunk[5]) << 16) |
+            (int(chunk[6]) << 8)  |  int(chunk[7])
+        )
+    else:
+        buf = 0
+        for i in range(8):
+            v = int(encoded[byte_idx + i]) if (byte_idx + i) < n_bytes else 0
+            buf = (buf << 8) | v
+    if bit_gap:
+        buf = (buf << bit_gap) & 0xFFFFFFFFFFFFFFFF
+
+    d = int(luts[0, (buf >> 56) & 0xFF])
+    if d >= _PTR_MIN and (256 - d) < k:
+        d = int(luts[256 - d, (buf >> 48) & 0xFF])
+        if d >= _PTR_MIN and (256 - d) < k:
+            d = int(luts[256 - d, (buf >> 40) & 0xFF])
+            if d >= _PTR_MIN and (256 - d) < k:
+                d = int(luts[256 - d, (buf >> 32) & 0xFF])
+
+    code_len = int(luts[k, d])
+    if code_len == 0:
+        raise RuntimeError(
+            f"DF11 host bit-position seek: code_len=0 at bit_pos={bit_pos}; "
+            "bundle is malformed."
+        )
+    return code_len
+
+
+def _advance_bit_position(
+    encoded: np.ndarray,
+    luts: np.ndarray,
+    k: int,
+    n_bytes: int,
+    bit_pos: int,
+    n_symbols: int,
+) -> int:
+    for _ in range(n_symbols):
+        bit_pos += _lookup_code_len(encoded, luts, k, n_bytes, bit_pos)
+    return bit_pos
+
+
+def _block_bit_start(bundle: Dict, block_id: int) -> int:
+    threads_per_block = int(bundle["T"])
+    bytes_per_thread = int(bundle["n"])
+    thread_start = block_id * threads_per_block
+    return thread_start * bytes_per_thread * 8 + _extract_gap(
+        np.asarray(bundle["gaps"], dtype=np.uint8),
+        thread_start,
+    )
+
+
+def _get_or_compute_elem_bit_start(bundle: Dict, elem_idx: int) -> int:
+    """Return exact encoded bit position for an element boundary.
+
+    The bundle stores exact element and bit positions at compressor block
+    boundaries. To seek a page boundary, start from the nearest containing
+    block and decode only the symbols between that block and ``elem_idx``.
+    """
+    elem_idx = int(elem_idx)
+    if elem_idx <= 0:
+        return 0
+    n_elements = int(bundle["n_elements"])
+    if elem_idx >= n_elements:
+        elem_idx = n_elements
+
+    cache = bundle.setdefault("_df11_elem_bit_start_cache", {0: 0})
+    cached = cache.get(elem_idx)
+    if cached is not None:
+        return int(cached)
+
+    output_positions = np.asarray(bundle["output_positions"], dtype=np.uint32)
+    block_id = int(np.searchsorted(output_positions, elem_idx, side="right") - 1)
+    block_id = max(0, min(block_id, len(output_positions) - 1))
+    block_elem_start = int(output_positions[block_id])
+
+    bit_pos = _block_bit_start(bundle, block_id)
+    if elem_idx > block_elem_start:
+        encoded = np.asarray(bundle["encoded_exponent"], dtype=np.uint8)
+        luts = np.asarray(bundle["luts"], dtype=np.uint8)
+        bit_pos = _advance_bit_position(
+            encoded,
+            luts,
+            int(bundle["k"]),
+            int(bundle["n_bytes"]),
+            bit_pos,
+            elem_idx - block_elem_start,
+        )
+
+    cache[elem_idx] = int(bit_pos)
+    return int(bit_pos)
+
+
 def _get_or_build_page_bit_starts(bundle: Dict, page_elements: int, n_pages: int) -> np.ndarray:
     """Return cached per-page bit starts for this bundle, computing on first call."""
     cache = bundle.get("_df11_page_bit_starts_cache")
@@ -169,6 +276,62 @@ def _get_or_build_page_bit_starts(bundle: Dict, page_elements: int, n_pages: int
     return page_bit_starts
 
 
+def _compute_block_core_ranges(
+    bundle: Dict,
+    max_cores: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute ranges at compressor block boundaries without walking symbols."""
+    n_elements = int(bundle["n_elements"])
+    n_blocks = int(bundle["B"])
+    if n_blocks <= 0:
+        return (
+            np.array([0], dtype=np.uint32),
+            np.array([n_elements], dtype=np.uint32),
+            np.array([0], dtype=np.uint32),
+        )
+
+    n_cores = min(max(1, int(max_cores)), n_blocks)
+    output_positions = np.asarray(bundle["output_positions"], dtype=np.uint32)
+    gaps = np.asarray(bundle["gaps"], dtype=np.uint8)
+    threads_per_block = int(bundle["T"])
+    bytes_per_thread = int(bundle["n"])
+    bits_per_thread = bytes_per_thread * 8
+
+    blocks_per_core_base = n_blocks // n_cores
+    remainder = n_blocks % n_cores
+
+    elem_starts = []
+    elem_counts = []
+    bit_starts = []
+
+    block_cursor = 0
+    for ci in range(n_cores):
+        n_blks = blocks_per_core_base + (1 if ci < remainder else 0)
+        if n_blks <= 0:
+            continue
+        blk_start = block_cursor
+        blk_end = min(block_cursor + n_blks, n_blocks)
+
+        elem_start = int(output_positions[blk_start])
+        elem_end = int(output_positions[blk_end]) if blk_end < len(output_positions) else n_elements
+        elem_end = min(elem_end, n_elements)
+
+        thread_start = blk_start * threads_per_block
+        bit_start = thread_start * bits_per_thread + _extract_gap(gaps, thread_start)
+
+        elem_starts.append(elem_start)
+        elem_counts.append(max(0, elem_end - elem_start))
+        bit_starts.append(bit_start)
+
+        block_cursor = blk_end
+
+    return (
+        np.array(elem_starts, dtype=np.uint32),
+        np.array(elem_counts, dtype=np.uint32),
+        np.array(bit_starts, dtype=np.uint32),
+    )
+
+
 def compute_core_ranges(
     bundle: Dict,
     R_pad: int,
@@ -177,20 +340,20 @@ def compute_core_ranges(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute (elem_starts, elem_counts, bit_starts) for the device split.
 
-    Splits the output tensor into up to ``max_cores`` page-aligned chunks
-    (one row of the row-major output = ``C_pad`` BF16 elements = one page).
-    The first element of each chunk is page-aligned, so the host op's
-    ``page_start = (elem_start * 2) / page_size`` is exact and adjacent
-    cores never overlap or gap.
+    Splits the compressed stream into up to ``max_cores`` contiguous chunks.
+    By default chunks start on output page boundaries and seek only the active
+    core starts. ``DFLOAT11_SPLIT_MODE=page_full`` keeps the old full page table
+    walk for debugging; ``DFLOAT11_SPLIT_MODE=block`` exercises the experimental
+    partial-page path.
 
     Each chunk's ``bit_start`` is the actual cumulative-Huffman-code bit
     position at which that chunk's first element was emitted by the
-    compressor — derived by walking the bitstream once on the host.
+    compressor.
 
     Args:
         bundle: bundle dict (as returned by ``compress/bundle.py::read_bundle``
-            or ``load_model_bundle``). Mutated to cache the page-bit-start
-            table for re-use on subsequent calls with the same shape.
+            or ``load_model_bundle``). Mutated to cache boundary bit starts for
+            re-use on subsequent calls with the same shape.
         R_pad: padded output rows (== number of output pages).
         C_pad: padded output columns (== elements per output page).
         max_cores: cap on the number of cores. The actual number used is
@@ -200,6 +363,10 @@ def compute_core_ranges(
         Three uint32 numpy arrays, one entry per active core.
     """
     n_elements = int(bundle["n_elements"])
+    split_mode = os.environ.get("DFLOAT11_SPLIT_MODE", "page").lower()
+
+    if split_mode == "block":
+        return _compute_block_core_ranges(bundle, max_cores=max_cores)
 
     if R_pad <= 0 or C_pad <= 0:
         # Degenerate; single-core fallback (page boundaries are meaningless here).
@@ -212,10 +379,7 @@ def compute_core_ranges(
     page_elements = C_pad
     n_pages = R_pad
 
-    # Single-core decode starts at bit 0 and covers the entire tensor. This
-    # intentionally skips the full bitstream walk, which is painful for
-    # full-model startup and unnecessary when no split points are needed.
-    n_cores = min(max(1, int(max_cores)), n_pages)
+    n_cores = min(max(1, int(max_cores)), n_pages, max(1, int(bundle["B"])))
     if n_cores <= 1:
         return (
             np.array([0], dtype=np.uint32),
@@ -223,8 +387,10 @@ def compute_core_ranges(
             np.array([0], dtype=np.uint32),
         )
 
-    # Build cached page->bit-start table.
-    page_bit_starts = _get_or_build_page_bit_starts(bundle, page_elements, n_pages)
+    if split_mode == "page_full":
+        page_bit_starts = _get_or_build_page_bit_starts(bundle, page_elements, n_pages)
+    else:
+        page_bit_starts = None
 
     # Split the n_pages output pages as evenly as possible across n_cores cores.
     pages_per_core_base = n_pages // n_cores
@@ -247,7 +413,10 @@ def compute_core_ranges(
         if elem_end > n_elements:
             elem_end = n_elements
 
-        bit_start = int(page_bit_starts[page_start])
+        if page_bit_starts is None:
+            bit_start = _get_or_compute_elem_bit_start(bundle, elem_start)
+        else:
+            bit_start = int(page_bit_starts[page_start])
 
         elem_starts.append(elem_start)
         elem_counts.append(elem_end - elem_start)

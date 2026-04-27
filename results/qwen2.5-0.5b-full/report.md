@@ -1,12 +1,13 @@
 # Evaluation Report: Qwen/Qwen2.5-0.5B-Instruct
 
 ## Output Equivalence
-- Result: FAIL
+- Result: PASS
 - Prompts tested: 1
-- Failures: 1
+- Failures: 0
+- Reference backend: ttnn
 - Prompt: The capital of France is
-- BF16 completion:  Paris. It was founded in 789 AD by Charlemagne,
+- Reference completion:  Paris. It is the largest city in Europe and one of the most important cities
 - DF11 completion:  Paris. It is the largest city in Europe and one of the most important cities
-- BF16 generation: 0.64s
-- DF11 generation: 238.71s
-- DF11 tokens/sec: 0.07
+- Reference generation: 1.55s
+- DF11 generation: 112.32s
+- DF11 tokens/sec: 0.14

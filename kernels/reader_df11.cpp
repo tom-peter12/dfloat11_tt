@@ -111,6 +111,7 @@ void kernel_main() {
     const uint32_t n_output_pages = get_arg_val<uint32_t>(23);
     const uint32_t core_elem_start = get_arg_val<uint32_t>(24);
     const uint32_t core_bit_start = get_arg_val<uint32_t>(25);
+    const uint32_t core_elem_count = get_arg_val<uint32_t>(26);
 
     constexpr uint32_t cb_decoded = 16;
 
@@ -132,30 +133,45 @@ void kernel_main() {
     uint32_t enc_window_count = 0;
     uint32_t bit_pos = core_bit_start;
     uint32_t out_idx = core_elem_start;
+    const uint32_t page_elements = OUT_PAGE_BYTES / sizeof(uint16_t);
+    const uint32_t core_elem_end =
+        (core_elem_start + core_elem_count > n_elements_global)
+            ? n_elements_global
+            : (core_elem_start + core_elem_count);
+    const uint32_t page_start_global = (core_elem_start * sizeof(uint16_t)) / OUT_PAGE_BYTES;
 
     for (uint32_t page_id = 0; page_id < n_output_pages; page_id++) {
         cb_reserve_back(cb_decoded, 1);
         uint8_t* page_buf = reinterpret_cast<uint8_t*>(get_write_ptr(cb_decoded));
         zero_page(page_buf, OUT_PAGE_BYTES);
 
-        uint32_t page_start_byte = page_id * OUT_PAGE_BYTES;
-        uint32_t global_start_byte = core_elem_start * sizeof(uint16_t) + page_start_byte;
-        uint32_t total_output_bytes = n_elements_global * sizeof(uint16_t);
-
-        uint32_t valid_page_bytes = OUT_PAGE_BYTES;
-        if (global_start_byte >= total_output_bytes) {
-            valid_page_bytes = 0;
-        } else if (global_start_byte + valid_page_bytes > total_output_bytes) {
-            valid_page_bytes = total_output_bytes - global_start_byte;
+        uint32_t global_page_start_elem = (page_start_global + page_id) * page_elements;
+        uint32_t global_page_end_elem = global_page_start_elem + page_elements;
+        if (global_page_end_elem > n_elements_global) {
+            global_page_end_elem = n_elements_global;
         }
 
-        uint32_t valid_elems = valid_page_bytes / sizeof(uint16_t);
+        uint32_t decode_start_elem = out_idx;
+        if (decode_start_elem < global_page_start_elem) {
+            decode_start_elem = global_page_start_elem;
+        }
+        uint32_t decode_end_elem = core_elem_end;
+        if (decode_end_elem > global_page_end_elem) {
+            decode_end_elem = global_page_end_elem;
+        }
+
+        uint32_t valid_elems = 0;
+        uint32_t page_elem_offset = 0;
+        if (decode_end_elem > decode_start_elem) {
+            valid_elems = decode_end_elem - decode_start_elem;
+            page_elem_offset = decode_start_elem - global_page_start_elem;
+        }
 
         if (valid_elems > 0) {
-            read_tensor_bytes(sm_accessor, out_idx, sm_l1_addr, valid_elems, SM_PAGE_BYTES);
+            read_tensor_bytes(sm_accessor, decode_start_elem, sm_l1_addr, valid_elems, SM_PAGE_BYTES);
         }
 
-        for (uint32_t elem_in_page = 0; elem_in_page < valid_elems && out_idx < n_elements_global; elem_in_page++) {
+        for (uint32_t elem_in_page = 0; elem_in_page < valid_elems && out_idx < core_elem_end; elem_in_page++) {
             uint32_t byte_idx = bit_pos / 8u;
             uint32_t bit_gap = bit_pos - byte_idx * 8u;
 
@@ -163,8 +179,11 @@ void kernel_main() {
             if (enc_window_start == 0xFFFFFFFFu ||
                 byte_idx < enc_window_start ||
                 ((byte_idx + 8u) > enc_window_end && enc_window_end < core_byte_end)) {
-                enc_window_start = byte_idx & ~31u;
-                enc_window_count = ENC_WINDOW_BYTES + 8u;
+                // Blackhole NOC reads require a 64-byte aligned source for
+                // this path. A 32-byte start can read the previous half-line,
+                // shifting multicore decode by 256 bits on affected cores.
+                enc_window_start = byte_idx & ~63u;
+                enc_window_count = ENC_WINDOW_BYTES + 64u + 8u;
                 if (enc_window_start >= core_byte_end) {
                     enc_window_count = 0;
                 } else if (enc_window_start + enc_window_count > core_byte_end) {
@@ -200,7 +219,7 @@ void kernel_main() {
             uint8_t sm = sm_window[elem_in_page];
             uint8_t high = (sm & 0x80u) | (decoded >> 1u);
             uint8_t low = ((decoded & 1u) << 7u) | (sm & 0x7Fu);
-            uint32_t out_byte = elem_in_page * sizeof(uint16_t);
+            uint32_t out_byte = (page_elem_offset + elem_in_page) * sizeof(uint16_t);
             page_buf[out_byte] = low;
             page_buf[out_byte + 1u] = high;
 

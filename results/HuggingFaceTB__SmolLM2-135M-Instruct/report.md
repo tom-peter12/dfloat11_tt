@@ -4,9 +4,10 @@
 - Result: PASS
 - Prompts tested: 1
 - Failures: 0
+- Reference backend: ttnn
 - Prompt: The capital of France is
-- BF16 completion:  Paris. Paris is
+- Reference completion:  Paris. Paris is
 - DF11 completion:  Paris. Paris is
-- BF16 generation: 0.14s
-- DF11 generation: 1.17s
-- DF11 tokens/sec: 3.42
+- Reference generation: 0.18s
+- DF11 generation: 0.88s
+- DF11 tokens/sec: 4.55

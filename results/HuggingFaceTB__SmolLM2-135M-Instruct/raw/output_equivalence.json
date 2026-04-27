@@ -1,6 +1,7 @@
 {
   "model_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
   "test": "output_equivalence",
+  "reference_backend": "ttnn",
   "all_pass": true,
   "n_prompts": 1,
   "n_fail": 0,
@@ -8,9 +9,13 @@
     {
       "prompt_idx": 0,
       "prompt": "The capital of France is",
+      "reference_backend": "ttnn",
       "tokens_match": true,
       "logits_match": true,
       "passed": true,
+      "first_mismatch_index": null,
+      "first_ref_token": null,
+      "first_df11_token": null,
       "ref_tokens": [
         504,
         3575,
@@ -49,10 +54,10 @@
       "df11_text": "The capital of France is Paris. Paris is",
       "ref_completion": " Paris. Paris is",
       "df11_completion": " Paris. Paris is",
-      "ref_generate_seconds": 0.1386884399689734,
-      "df11_generate_seconds": 1.169798028189689,
-      "ref_tokens_per_sec": 28.841625162809947,
-      "df11_tokens_per_sec": 3.4193936932772626
+      "ref_generate_seconds": 0.1827323278412223,
+      "df11_generate_seconds": 0.8782379352487624,
+      "ref_tokens_per_sec": 21.889941682763627,
+      "df11_tokens_per_sec": 4.554574380651177
     }
   ]
 }
