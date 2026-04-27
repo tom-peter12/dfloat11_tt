@@ -22,6 +22,7 @@ def _measure_decompress_throughput(
 ) -> List[Dict]:
     """Measure decompression throughput (GB/s) for various matrix sizes."""
     from dfloat11_tt.compress.compressor import compress_tensor
+    from dfloat11_tt.nn._df11_split import DEFAULT_MAX_CORES, compute_core_ranges
 
     results = []
     R = 4096
@@ -32,17 +33,32 @@ def _measure_decompress_throughput(
         import ttnn
         import numpy as np
 
-        def _to_ttnn(arr):
+        def _to_ttnn_uint8(arr):
             return ttnn.from_torch(
                 torch.from_numpy(arr.flatten().astype(np.uint8)),
                 dtype=ttnn.uint8, device=tt_device, layout=ttnn.ROW_MAJOR_LAYOUT
             )
 
-        enc_tt    = _to_ttnn(bundle["encoded_exponent"])
-        sm_tt     = _to_ttnn(bundle["sign_mantissa"])
-        luts_tt   = _to_ttnn(bundle["luts"])
-        gaps_tt   = _to_ttnn(bundle["gaps"])
-        outpos_tt = _to_ttnn(bundle["output_positions"].view(np.uint8))
+        def _to_ttnn_uint32(arr):
+            return ttnn.from_torch(
+                torch.from_numpy(arr.flatten().astype(np.uint32)),
+                dtype=ttnn.uint32, device=tt_device, layout=ttnn.ROW_MAJOR_LAYOUT
+            )
+
+        enc_tt    = _to_ttnn_uint8(bundle["encoded_exponent"])
+        sm_tt     = _to_ttnn_uint8(bundle["sign_mantissa"])
+        luts_tt   = _to_ttnn_uint8(bundle["luts"])
+        gaps_tt   = _to_ttnn_uint8(bundle["gaps"])
+        outpos_tt = _to_ttnn_uint8(bundle["output_positions"].view(np.uint8))
+        elem_starts, elem_counts, bit_starts = compute_core_ranges(
+            bundle, bundle["R_pad"], bundle["C_pad"], max_cores=DEFAULT_MAX_CORES
+        )
+        elem_starts_tt = _to_ttnn_uint32(elem_starts)
+        elem_counts_tt = _to_ttnn_uint32(elem_counts)
+        bit_starts_tt = _to_ttnn_uint32(bit_starts)
+        elem_starts_host = elem_starts.tolist()
+        elem_counts_host = elem_counts.tolist()
+        bit_starts_host = bit_starts.tolist()
 
         try:
             from dfloat11_tt_cpp import dfloat11_decompress
@@ -50,6 +66,12 @@ def _measure_decompress_throughput(
             # Warmup
             w_tt = dfloat11_decompress(
                 enc_tt, sm_tt, luts_tt, gaps_tt, outpos_tt,
+                elem_starts_tt,
+                elem_counts_tt,
+                bit_starts_tt,
+                elem_starts_host,
+                elem_counts_host,
+                bit_starts_host,
                 bundle["k"], bundle["n"], bundle["T"], bundle["B"],
                 R, C, bundle["R_pad"], bundle["C_pad"],
                 bundle["n_elements"], bundle["n_bytes"],
@@ -62,6 +84,12 @@ def _measure_decompress_throughput(
             for _ in range(N_ITER):
                 w_tt = dfloat11_decompress(
                     enc_tt, sm_tt, luts_tt, gaps_tt, outpos_tt,
+                    elem_starts_tt,
+                    elem_counts_tt,
+                    bit_starts_tt,
+                    elem_starts_host,
+                    elem_counts_host,
+                    bit_starts_host,
                     bundle["k"], bundle["n"], bundle["T"], bundle["B"],
                     R, C, bundle["R_pad"], bundle["C_pad"],
                     bundle["n_elements"], bundle["n_bytes"],

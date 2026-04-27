@@ -52,10 +52,10 @@
         "df11_text": "The capital of France is Paris. Paris is",
         "ref_completion": " Paris. Paris is",
         "df11_completion": " Paris. Paris is",
-        "ref_generate_seconds": 0.11782610398950055,
-        "df11_generate_seconds": 0.22359045199118555,
-        "ref_tokens_per_sec": 33.948334575812154,
-        "df11_tokens_per_sec": 17.889851576299375
+        "ref_generate_seconds": 0.1386884399689734,
+        "df11_generate_seconds": 1.169798028189689,
+        "ref_tokens_per_sec": 28.841625162809947,
+        "df11_tokens_per_sec": 3.4193936932772626
       }
     ]
   }

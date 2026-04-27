@@ -1,18 +1,36 @@
 - kernel:
     watcher_kernel_id: 3
     name: cq_dispatch_subordinate
-    path: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_dispatch_subordinate/9303553105986000748/
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_dispatch_subordinate/17435341992495003967/
     source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
-    program_id: 0
-- kernel:
-    watcher_kernel_id: 1
-    name: cq_prefetch
-    path: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_prefetch/1220993882025971904/
-    source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
     program_id: 0
 - kernel:
     watcher_kernel_id: 2
     name: cq_dispatch
-    path: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_dispatch/1297578146234312010/
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_dispatch/15497060365278945259/
     source: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
     program_id: 0
+- kernel:
+    watcher_kernel_id: 1
+    name: cq_prefetch
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_prefetch/8634524191443905710/
+    source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
+    program_id: 0
+- kernel:
+    watcher_kernel_id: 4
+    name: reader_df11
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/reader_df11/6984760568049215214/
+    source: /home/tomasissac/dfloat11_tt/kernels/reader_df11.cpp
+    program_id: 1
+- kernel:
+    watcher_kernel_id: 5
+    name: decompress_df11
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/decompress_df11/5734310994277743943/
+    source: /home/tomasissac/dfloat11_tt/kernels/decompress_df11.cpp
+    program_id: 1
+- kernel:
+    watcher_kernel_id: 6
+    name: writer_df11
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/writer_df11/17553510285364255233/
+    source: /home/tomasissac/dfloat11_tt/kernels/writer_df11.cpp
+    program_id: 1

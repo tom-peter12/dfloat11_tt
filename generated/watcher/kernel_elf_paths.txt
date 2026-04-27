@@ -1,4 +1,7 @@
 0: blank
-3: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_dispatch_subordinate/9303553105986000748//ncrisc/ncrisc.elf
-1: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_prefetch/1220993882025971904//brisc/brisc.elf
-2: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_dispatch/1297578146234312010//brisc/brisc.elf
+3: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_dispatch_subordinate/17435341992495003967//ncrisc/ncrisc.elf
+2: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_dispatch/15497060365278945259//brisc/brisc.elf
+1: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_prefetch/8634524191443905710//brisc/brisc.elf
+5: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/decompress_df11/5734310994277743943//trisc0/trisc0.elf:/home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/decompress_df11/5734310994277743943//trisc1/trisc1.elf:/home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/decompress_df11/5734310994277743943//trisc2/trisc2.elf
+6: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/writer_df11/17553510285364255233//ncrisc/ncrisc.elf
+4: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/reader_df11/6984760568049215214//brisc/brisc.elf

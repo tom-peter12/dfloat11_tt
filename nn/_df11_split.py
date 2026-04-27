@@ -28,19 +28,28 @@ This module computes both: it walks the encoded bitstream once on the host
 to record the bit position at every page boundary, then assigns each core a
 contiguous, page-aligned chunk of the output (one chunk per core).
 
-Cost: a single pass over ``n_elements`` Huffman lookups in pure Python.
-For SmolLM2-135M's q_proj (331k elements) this is roughly 80 ms per
-tensor; the result is cached on the bundle dict so re-loading the same
-bundle is free.
+Cost for multi-core splits: a single pass over ``n_elements`` Huffman
+lookups in pure Python. For full-model bundles this is too expensive to do
+silently at load time, so the default is single-core splitting. Set
+``DFLOAT11_MAX_CORES`` above 1 to enable page-aligned multi-core splits.
 """
 from __future__ import annotations
 
+import os
 from typing import Dict, Tuple
 
 import numpy as np
 
-# Match host op default; can be overridden but Tensix grids cap well below this.
-DEFAULT_MAX_CORES = 30
+def _default_max_cores() -> int:
+    raw = os.environ.get("DFLOAT11_MAX_CORES", "1")
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 1
+
+
+# Single-core avoids the expensive Python bitstream walk for full-model startup.
+DEFAULT_MAX_CORES = _default_max_cores()
 _PTR_MIN = 240
 
 
@@ -203,14 +212,19 @@ def compute_core_ranges(
     page_elements = C_pad
     n_pages = R_pad
 
+    # Single-core decode starts at bit 0 and covers the entire tensor. This
+    # intentionally skips the full bitstream walk, which is painful for
+    # full-model startup and unnecessary when no split points are needed.
+    n_cores = min(max(1, int(max_cores)), n_pages)
+    if n_cores <= 1:
+        return (
+            np.array([0], dtype=np.uint32),
+            np.array([n_elements], dtype=np.uint32),
+            np.array([0], dtype=np.uint32),
+        )
+
     # Build cached page->bit-start table.
     page_bit_starts = _get_or_build_page_bit_starts(bundle, page_elements, n_pages)
-
-    # Decide how many cores; cap at n_pages (no point in more cores than pages)
-    # and at max_cores (host op MAX_DF11_CORES + Tensix grid).
-    n_cores = min(max_cores, n_pages)
-    if n_cores <= 0:
-        n_cores = 1
 
     # Split the n_pages output pages as evenly as possible across n_cores cores.
     pages_per_core_base = n_pages // n_cores

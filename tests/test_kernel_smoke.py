@@ -16,6 +16,8 @@ import numpy as np
 import pytest
 import torch
 
+from dfloat11_tt.nn._df11_split import DEFAULT_MAX_CORES, compute_core_ranges
+
 # Physical device ID that works on P150_X4 with VISIBLE_DEVICES=0 + p150 descriptor
 _TT_DEVICE_ID = int(os.environ.get("DFLOAT11_TT_DEVICE_ID", "3"))
 
@@ -59,20 +61,35 @@ def test_smoke_tiny(tt_device) -> None:
     w = torch.randn(64, 64, dtype=torch.bfloat16)
     bundle = compress_tensor(w)
 
-    def _to_ttnn(arr):
+    def _to_ttnn_uint8(arr):
         return ttnn.from_torch(
             torch.from_numpy(arr.flatten().astype(np.uint8)),
             dtype=ttnn.uint8, device=tt_device, layout=ttnn.ROW_MAJOR_LAYOUT
         )
 
-    enc_tt   = _to_ttnn(bundle["encoded_exponent"])
-    sm_tt    = _to_ttnn(bundle["sign_mantissa"])
-    luts_tt  = _to_ttnn(bundle["luts"])
-    gaps_tt  = _to_ttnn(bundle["gaps"])
-    outpos_tt = _to_ttnn(bundle["output_positions"].view(np.uint8))
+    def _to_ttnn_uint32(arr):
+        return ttnn.from_torch(
+            torch.from_numpy(arr.flatten().astype(np.uint32)),
+            dtype=ttnn.uint32, device=tt_device, layout=ttnn.ROW_MAJOR_LAYOUT
+        )
+
+    enc_tt   = _to_ttnn_uint8(bundle["encoded_exponent"])
+    sm_tt    = _to_ttnn_uint8(bundle["sign_mantissa"])
+    luts_tt  = _to_ttnn_uint8(bundle["luts"])
+    gaps_tt  = _to_ttnn_uint8(bundle["gaps"])
+    outpos_tt = _to_ttnn_uint8(bundle["output_positions"].view(np.uint8))
+    elem_starts, elem_counts, bit_starts = compute_core_ranges(
+        bundle, bundle["R_pad"], bundle["C_pad"], max_cores=DEFAULT_MAX_CORES
+    )
 
     out_tt = dfloat11_decompress(
         enc_tt, sm_tt, luts_tt, gaps_tt, outpos_tt,
+        _to_ttnn_uint32(elem_starts),
+        _to_ttnn_uint32(elem_counts),
+        _to_ttnn_uint32(bit_starts),
+        elem_starts.tolist(),
+        elem_counts.tolist(),
+        bit_starts.tolist(),
         bundle["k"], bundle["n"], bundle["T"], bundle["B"],
         64, 64, bundle["R_pad"], bundle["C_pad"],
         bundle["n_elements"], bundle["n_bytes"],
@@ -103,20 +120,35 @@ def test_smoke_medium(tt_device) -> None:
 
     bundle = compress_tensor(w)
 
-    def _to_ttnn(arr):
+    def _to_ttnn_uint8(arr):
         return ttnn.from_torch(
             torch.from_numpy(arr.flatten().astype(np.uint8)),
             dtype=ttnn.uint8, device=tt_device, layout=ttnn.ROW_MAJOR_LAYOUT
         )
 
-    enc_tt    = _to_ttnn(bundle["encoded_exponent"])
-    sm_tt     = _to_ttnn(bundle["sign_mantissa"])
-    luts_tt   = _to_ttnn(bundle["luts"])
-    gaps_tt   = _to_ttnn(bundle["gaps"])
-    outpos_tt = _to_ttnn(bundle["output_positions"].view(np.uint8))
+    def _to_ttnn_uint32(arr):
+        return ttnn.from_torch(
+            torch.from_numpy(arr.flatten().astype(np.uint32)),
+            dtype=ttnn.uint32, device=tt_device, layout=ttnn.ROW_MAJOR_LAYOUT
+        )
+
+    enc_tt    = _to_ttnn_uint8(bundle["encoded_exponent"])
+    sm_tt     = _to_ttnn_uint8(bundle["sign_mantissa"])
+    luts_tt   = _to_ttnn_uint8(bundle["luts"])
+    gaps_tt   = _to_ttnn_uint8(bundle["gaps"])
+    outpos_tt = _to_ttnn_uint8(bundle["output_positions"].view(np.uint8))
+    elem_starts, elem_counts, bit_starts = compute_core_ranges(
+        bundle, bundle["R_pad"], bundle["C_pad"], max_cores=DEFAULT_MAX_CORES
+    )
 
     out_tt = dfloat11_decompress(
         enc_tt, sm_tt, luts_tt, gaps_tt, outpos_tt,
+        _to_ttnn_uint32(elem_starts),
+        _to_ttnn_uint32(elem_counts),
+        _to_ttnn_uint32(bit_starts),
+        elem_starts.tolist(),
+        elem_counts.tolist(),
+        bit_starts.tolist(),
         bundle["k"], bundle["n"], bundle["T"], bundle["B"],
         1024, 1024, bundle["R_pad"], bundle["C_pad"],
         bundle["n_elements"], bundle["n_bytes"],

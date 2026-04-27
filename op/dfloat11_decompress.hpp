@@ -5,7 +5,6 @@
 #include <variant>
 #include <cstdint>
 #include <vector>
-#include <array>
 
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/core.hpp"
@@ -38,9 +37,9 @@ struct DFloat11DecompressDeviceOp {
         uint32_t n_cores_override; // 0 = use all
 
         uint32_t n_active_ranges;
-        std::array<uint32_t, MAX_DF11_CORES> elem_starts_host{};
-        std::array<uint32_t, MAX_DF11_CORES> elem_counts_host{};
-        std::array<uint32_t, MAX_DF11_CORES> bit_starts_host{};
+        std::vector<uint32_t> elem_starts_host;
+        std::vector<uint32_t> elem_counts_host;
+        std::vector<uint32_t> bit_starts_host;
     };
 
     struct tensor_args_t {

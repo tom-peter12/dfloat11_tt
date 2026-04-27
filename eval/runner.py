@@ -78,6 +78,7 @@ def run_config(config_path: Path, tt_device: Optional[Any] = None) -> Dict:
     prompt_limit = cfg.get("prompt_limit")
     compare_logits = bool(cfg.get("compare_logits", True))
     wrap_blocks = bool(cfg.get("wrap_blocks", True))
+    reference_backend = str(cfg.get("reference_backend", "cpu"))
     expected_ratio = cfg.get("expected_compression_ratio", 0.71)
 
     # Keep this guard for direct run_config() callers. The CLI calls ensure_bundle()
@@ -106,6 +107,7 @@ def run_config(config_path: Path, tt_device: Optional[Any] = None) -> Dict:
             prompt_limit=prompt_limit,
             compare_logits=compare_logits,
             wrap_blocks=wrap_blocks,
+            reference_backend=reference_backend,
         )
 
     if "benchmarks" in suite:
@@ -152,13 +154,17 @@ def _write_report(results: Dict, path: Path) -> None:
         lines.append(f"- Result: {'PASS' if oe.get('all_pass') else 'FAIL'}")
         lines.append(f"- Prompts tested: {oe.get('n_prompts', 0)}")
         lines.append(f"- Failures: {oe.get('n_fail', 0)}")
+        if oe.get("reference_backend"):
+            lines.append(f"- Reference backend: {oe.get('reference_backend')}")
         first = (oe.get("results") or [{}])[0]
         if first:
             lines.append(f"- Prompt: {first.get('prompt', '')}")
-            lines.append(f"- BF16 completion: {first.get('ref_completion', '')}")
+            lines.append(f"- Reference completion: {first.get('ref_completion', '')}")
             lines.append(f"- DF11 completion: {first.get('df11_completion', '')}")
+            if first.get("first_mismatch_index") is not None:
+                lines.append(f"- First mismatch index: {first.get('first_mismatch_index')}")
             if first.get("df11_generate_seconds") is not None:
-                lines.append(f"- BF16 generation: {first.get('ref_generate_seconds', 0):.2f}s")
+                lines.append(f"- Reference generation: {first.get('ref_generate_seconds', 0):.2f}s")
                 lines.append(f"- DF11 generation: {first.get('df11_generate_seconds', 0):.2f}s")
                 lines.append(f"- DF11 tokens/sec: {first.get('df11_tokens_per_sec', 0):.2f}")
         lines.append("")

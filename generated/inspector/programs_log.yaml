@@ -1,34 +1,74 @@
 - program_created:
     id: 0
-    timestamp_ns: 1777313037493895971
+    timestamp_ns: 1777316040480790467
 - program_compile_started:
     id: 0
-    timestamp_ns: 1777313037494370452
+    timestamp_ns: 1777316040481419912
 - program_kernel_compile_finished:
     id: 0
-    timestamp_ns: 1777313037502191909
-    duration_ns: 7821457
+    timestamp_ns: 1777316040487434831
+    duration_ns: 6014919
     watcher_kernel_id: 3
     name: cq_dispatch_subordinate
-    path: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_dispatch_subordinate/9303553105986000748/
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_dispatch_subordinate/17435341992495003967/
     source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
 - program_kernel_compile_finished:
     id: 0
-    timestamp_ns: 1777313037503938783
-    duration_ns: 9568331
-    watcher_kernel_id: 1
-    name: cq_prefetch
-    path: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_prefetch/1220993882025971904/
-    source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
-- program_kernel_compile_finished:
-    id: 0
-    timestamp_ns: 1777313037503973623
-    duration_ns: 9603171
+    timestamp_ns: 1777316040494925308
+    duration_ns: 13505396
     watcher_kernel_id: 2
     name: cq_dispatch
-    path: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_dispatch/1297578146234312010/
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_dispatch/15497060365278945259/
     source: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1777316040496188668
+    duration_ns: 14768756
+    watcher_kernel_id: 1
+    name: cq_prefetch
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_prefetch/8634524191443905710/
+    source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
 - program_compile_finished:
     id: 0
-    timestamp_ns: 1777313037507626891
-    duration_ns: 13256439
+    timestamp_ns: 1777316040501738591
+    duration_ns: 20318679
+- program_created:
+    id: 1
+    timestamp_ns: 1777316048350640594
+- program_created:
+    id: 2
+    timestamp_ns: 1777316048350793413
+- program_destroyed:
+    id: 2
+    timestamp_ns: 1777316048350802043
+- program_compile_started:
+    id: 1
+    timestamp_ns: 1777316048350920311
+- program_kernel_compile_finished:
+    id: 1
+    timestamp_ns: 1777316048357016110
+    duration_ns: 6095799
+    watcher_kernel_id: 4
+    name: reader_df11
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/reader_df11/6984760568049215214/
+    source: /home/tomasissac/dfloat11_tt/kernels/reader_df11.cpp
+- program_kernel_compile_finished:
+    id: 1
+    timestamp_ns: 1777316048357111119
+    duration_ns: 6190808
+    watcher_kernel_id: 5
+    name: decompress_df11
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/decompress_df11/5734310994277743943/
+    source: /home/tomasissac/dfloat11_tt/kernels/decompress_df11.cpp
+- program_kernel_compile_finished:
+    id: 1
+    timestamp_ns: 1777316048357209109
+    duration_ns: 6288798
+    watcher_kernel_id: 6
+    name: writer_df11
+    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/writer_df11/17553510285364255233/
+    source: /home/tomasissac/dfloat11_tt/kernels/writer_df11.cpp
+- program_compile_finished:
+    id: 1
+    timestamp_ns: 1777316048358263050
+    duration_ns: 7342739

@@ -2,3 +2,6 @@
 1: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
 2: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
 3: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
+4: /home/tomasissac/dfloat11_tt/kernels/reader_df11.cpp
+5: /home/tomasissac/dfloat11_tt/kernels/decompress_df11.cpp
+6: /home/tomasissac/dfloat11_tt/kernels/writer_df11.cpp

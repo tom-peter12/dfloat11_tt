@@ -479,10 +479,13 @@ Tensor dfloat11_decompress(
     }
 
     attrs.n_active_ranges = n_ranges;
+    attrs.elem_starts_host.reserve(n_ranges);
+    attrs.elem_counts_host.reserve(n_ranges);
+    attrs.bit_starts_host.reserve(n_ranges);
     for (uint32_t i = 0; i < n_ranges; ++i) {
-        attrs.elem_starts_host[i] = elem_starts_host[i];
-        attrs.elem_counts_host[i] = elem_counts_host[i];
-        attrs.bit_starts_host[i] = bit_starts_host[i];
+        attrs.elem_starts_host.push_back(elem_starts_host[i]);
+        attrs.elem_counts_host.push_back(elem_counts_host[i]);
+        attrs.bit_starts_host.push_back(bit_starts_host[i]);
     }
 
     return ttnn::device_operation::launch<DFloat11DecompressDeviceOp>(
