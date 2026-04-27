@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -38,6 +39,33 @@ def _load_config(config_path: Path) -> Dict:
         return yaml.safe_load(f)
 
 
+def _clean_results_suffix(raw_suffix: Optional[str]) -> Optional[str]:
+    if raw_suffix is None:
+        return None
+    suffix = raw_suffix.strip()
+    if not suffix:
+        return None
+    suffix = re.sub(r"[^A-Za-z0-9_.-]+", "-", suffix).strip("._-")
+    if not suffix:
+        raise ValueError(f"Invalid results suffix: {raw_suffix!r}")
+    return suffix
+
+
+def _apply_results_suffix(results_dir: Path, suffix: Optional[str]) -> Path:
+    suffix = _clean_results_suffix(suffix)
+    if suffix is None:
+        return results_dir
+    if results_dir.name == "raw":
+        return results_dir.parent.with_name(f"{results_dir.parent.name}-{suffix}") / results_dir.name
+    return results_dir.with_name(f"{results_dir.name}-{suffix}")
+
+
+def _aggregate_path(results_suffix: Optional[str]) -> Path:
+    suffix = _clean_results_suffix(results_suffix)
+    filename = f"aggregate_{suffix}.json" if suffix else "aggregate.json"
+    return ROOT / "results" / filename
+
+
 def _bundle_path_for_config(cfg: Dict) -> Path:
     model_id = cfg["model_id"]
     return _resolve_repo_path(cfg["bundle_path"]) if "bundle_path" in cfg else _get_bundle_path(model_id)
@@ -65,14 +93,20 @@ def ensure_bundle(config_path: Path) -> Path:
     return bundle_path
 
 
-def run_config(config_path: Path, tt_device: Optional[Any] = None) -> Dict:
+def run_config(
+    config_path: Path,
+    tt_device: Optional[Any] = None,
+    results_suffix: Optional[str] = None,
+) -> Dict:
     cfg = _load_config(config_path)
+    results_suffix = _clean_results_suffix(results_suffix)
 
     model_id = cfg["model_id"]
     patterns = cfg.get("compress_patterns", [])
     suite    = cfg.get("eval_suite", ["bit_identity"])
     bundle_path  = _bundle_path_for_config(cfg)
     results_dir  = _resolve_repo_path(cfg["results_dir"]) if "results_dir" in cfg else _get_results_dir(model_id)
+    results_dir  = _apply_results_suffix(results_dir, results_suffix)
     prompt_file  = ROOT / cfg.get("prompt_file", "eval/prompts/50_prompts.txt")
     max_new_tokens = int(cfg.get("max_new_tokens", 50))
     prompt_limit = cfg.get("prompt_limit")
@@ -92,7 +126,13 @@ def run_config(config_path: Path, tt_device: Optional[Any] = None) -> Dict:
     if not bundle_path.exists():
         ensure_bundle(config_path)
 
-    agg_results: Dict = {"model_id": model_id, "config": str(config_path)}
+    agg_results: Dict = {
+        "model_id": model_id,
+        "config": str(config_path),
+        "results_dir": str(results_dir.relative_to(ROOT) if results_dir.is_relative_to(ROOT) else results_dir),
+    }
+    if results_suffix:
+        agg_results["results_suffix"] = results_suffix
 
     if "bit_identity" in suite:
         from dfloat11_tt.eval.test_bit_identity import run_bit_identity_test
@@ -207,7 +247,16 @@ def main() -> None:
     parser.add_argument("--tt-device-id", type=int, default=default_device_id, help="TT device ID")
     parser.add_argument("--no-device", action="store_true",
                         help="Skip on-device tests (CPU-only mode)")
+    parser.add_argument(
+        "--results-suffix",
+        default=os.environ.get("DFLOAT11_RESULTS_SUFFIX", ""),
+        help=(
+            "Append a suffix to per-config results folders and aggregate output. "
+            "Can also be set with DFLOAT11_RESULTS_SUFFIX."
+        ),
+    )
     args = parser.parse_args()
+    results_suffix = _clean_results_suffix(args.results_suffix)
 
     configs_dir = ROOT / "eval" / "configs"
 
@@ -238,11 +287,11 @@ def main() -> None:
         all_results: List[Dict] = []
         for cfg in configs:
             logger.info(f"Running config: {cfg}")
-            result = run_config(cfg, tt_device=tt_device)
+            result = run_config(cfg, tt_device=tt_device, results_suffix=results_suffix)
             all_results.append(result)
 
         # Aggregate JSON for visualizer
-        agg_path = ROOT / "results" / "aggregate.json"
+        agg_path = _aggregate_path(results_suffix)
         agg_path.parent.mkdir(parents=True, exist_ok=True)
         agg_path.write_text(json.dumps(all_results, indent=2))
         logger.info(f"Aggregate results -> {agg_path}")

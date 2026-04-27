@@ -15,4 +15,4 @@ prompt_limit: 1
 max_new_tokens: 16
 compare_logits: true
 reference_backend: ttnn
-wrap_blocks: false
+wrap_blocks: true

@@ -14,4 +14,4 @@ prompt_file: eval/prompts/smoke_prompt.txt
 prompt_limit: 1
 max_new_tokens: 16
 compare_logits: false
-wrap_blocks: false
+wrap_blocks: true

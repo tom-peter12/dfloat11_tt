@@ -23,6 +23,9 @@ export PYTHONPATH="$(dirname "$REPO_ROOT"):${PYTHONPATH:-}"
 
 cd "$REPO_ROOT"
 echo "[dfloat11] Config: $CONFIG"
+if [[ -n "${DFLOAT11_RESULTS_SUFFIX:-}" ]]; then
+    echo "[dfloat11] Results suffix: $DFLOAT11_RESULTS_SUFFIX"
+fi
 echo "[dfloat11] Phase order: CPU compress bundle -> open TT device -> upload/decompress/infer"
 echo "[dfloat11] Compression verification is off unless the config sets compression_check: true"
 echo "[dfloat11] Decompressed TT weights are cached during generation unless DFLOAT11_CACHE_WEIGHTS=0"

@@ -77,6 +77,17 @@ Llama 3.2 1B:
 The first run creates a compressed bundle under `compressed/`. Later runs reuse
 that bundle.
 
+To keep comparison runs separate, set a results suffix before running:
+
+```bash
+DFLOAT11_MAX_CORES=1 DFLOAT11_RESULTS_SUFFIX=cores1 ./scripts/run_llama3_2_1b_pipeline.sh
+DFLOAT11_MAX_CORES=30 DFLOAT11_RESULTS_SUFFIX=cores30 ./scripts/run_llama3_2_1b_pipeline.sh
+```
+
+Those runs write to `results/llama-3.2-1b-full-cores1/`,
+`results/llama-3.2-1b-full-cores30/`, `results/aggregate_cores1.json`,
+and `results/aggregate_cores30.json`.
+
 If Llama access fails, run:
 
 ```bash
@@ -114,6 +125,13 @@ Results are written to:
 ```text
 results/aggregate.json
 results/<model-name>/
+```
+
+With `DFLOAT11_RESULTS_SUFFIX=<suffix>`, results are written to:
+
+```text
+results/aggregate_<suffix>.json
+results/<model-name>-<suffix>/
 ```
 
 More details on what the pipeline does are in [PIPELINE.md](PIPELINE.md).

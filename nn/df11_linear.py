@@ -63,6 +63,7 @@ class DF11Linear(nn.Module):
         self._tt_device = device
         self._module_name = "<unnamed>"
         self._cached_weight_linear_tt = None
+        self._block_weight_linear_tt = None
 
     def load_bundle(self, bundle: Dict, tt_device: Any) -> None:
         """Load a compressed bundle dict onto the TT device."""
@@ -125,8 +126,8 @@ class DF11Linear(nn.Module):
                 pass
             self._cached_weight_linear_tt = None
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Decompress or reuse weights, then run matmul."""
+    def materialize_weight_linear_tt(self, trace: bool = False) -> tuple[Any, float, float]:
+        """Decompress this layer's DF11 weight and return matmul-ready TT weight."""
         import ttnn
 
         try:
@@ -134,14 +135,60 @@ class DF11Linear(nn.Module):
         except ImportError as e:
             raise RuntimeError(f"dfloat11_tt_cpp import failed: {e}")
 
+        td0 = time.perf_counter() if trace else 0.0
+        weight_tt = _cpp_decompress(
+            self._enc_exp,
+            self._sign_mant,
+            self._luts,
+            self._gaps,
+            self._outpos,
+            self._elem_starts,
+            self._elem_counts,
+            self._bit_starts,
+            self._elem_starts_host.tolist(),
+            self._elem_counts_host.tolist(),
+            self._bit_starts_host.tolist(),
+            self._k,
+            self._n,
+            self._T,
+            self._B,
+            self.out_features,
+            self.in_features,
+            self._R_pad,
+            self._C_pad,
+            self._n_elements,
+            self._n_bytes,
+        )
+        decompress_ms = (time.perf_counter() - td0) * 1000.0 if trace else 0.0
+
+        tl0 = time.perf_counter() if trace else 0.0
+        weight_tiled_tt = ttnn.to_layout(weight_tt, ttnn.TILE_LAYOUT)
+        weight_tt.deallocate(force=True)
+        weight_linear_tt = ttnn.transpose(weight_tiled_tt, 0, 1)
+        weight_tiled_tt.deallocate(force=True)
+        layout_ms = (time.perf_counter() - tl0) * 1000.0 if trace else 0.0
+        return weight_linear_tt, decompress_ms, layout_ms
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Decompress or reuse weights, then run matmul."""
+        import ttnn
+
         trace = _env_flag("DFLOAT11_TRACE_LINEAR", False)
         cache_weights = _env_flag("DFLOAT11_CACHE_WEIGHTS", True)
 
         t0 = time.perf_counter() if trace else 0.0
         decompress_ms = 0.0
         layout_ms = 0.0
+        owns_weight = False
 
-        if cache_weights and self._cached_weight_linear_tt is not None:
+        if self._block_weight_linear_tt is not None:
+            weight_linear_tt = self._block_weight_linear_tt
+            if trace:
+                logger.info(
+                    f"[df11] {self._module_name}: block predecoded weight "
+                    f"shape=[{self.out_features},{self.in_features}]"
+                )
+        elif cache_weights and self._cached_weight_linear_tt is not None:
             weight_linear_tt = self._cached_weight_linear_tt
             if trace:
                 logger.info(
@@ -149,43 +196,12 @@ class DF11Linear(nn.Module):
                     f"shape=[{self.out_features},{self.in_features}]"
                 )
         else:
-            td0 = time.perf_counter() if trace else 0.0
-            weight_tt = _cpp_decompress(
-                self._enc_exp,
-                self._sign_mant,
-                self._luts,
-                self._gaps,
-                self._outpos,
-                self._elem_starts,
-                self._elem_counts,
-                self._bit_starts,
-                self._elem_starts_host.tolist(),
-                self._elem_counts_host.tolist(),
-                self._bit_starts_host.tolist(),
-                self._k,
-                self._n,
-                self._T,
-                self._B,
-                self.out_features,
-                self.in_features,
-                self._R_pad,
-                self._C_pad,
-                self._n_elements,
-                self._n_bytes,
-            )
-            if trace:
-                decompress_ms = (time.perf_counter() - td0) * 1000.0
-
-            tl0 = time.perf_counter() if trace else 0.0
-            weight_tiled_tt = ttnn.to_layout(weight_tt, ttnn.TILE_LAYOUT)
-            weight_tt.deallocate(force=True)
-            weight_linear_tt = ttnn.transpose(weight_tiled_tt, 0, 1)
-            weight_tiled_tt.deallocate(force=True)
-            if trace:
-                layout_ms = (time.perf_counter() - tl0) * 1000.0
+            weight_linear_tt, decompress_ms, layout_ms = self.materialize_weight_linear_tt(trace=trace)
 
             if cache_weights:
                 self._cached_weight_linear_tt = weight_linear_tt
+            else:
+                owns_weight = True
 
             if trace:
                 logger.info(
@@ -209,7 +225,7 @@ class DF11Linear(nn.Module):
         out_tt = ttnn.linear(x_tt, weight_linear_tt, bias=self.bias)
         matmul_ms = (time.perf_counter() - tm0) * 1000.0 if trace else 0.0
 
-        if not cache_weights:
+        if owns_weight:
             weight_linear_tt.deallocate(force=True)
 
         if input_is_torch:
