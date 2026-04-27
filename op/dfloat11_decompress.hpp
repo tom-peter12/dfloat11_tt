@@ -4,6 +4,8 @@
 #include <optional>
 #include <variant>
 #include <cstdint>
+#include <vector>
+#include <array>
 
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/core.hpp"
@@ -20,6 +22,8 @@ namespace ttnn::operations::dfloat11 {
  * raw byte tensors) and returns a tiled BF16 tensor on the same device.
  */
 struct DFloat11DecompressDeviceOp {
+    static constexpr uint32_t MAX_DF11_CORES = 256;
+
     struct operation_attributes_t {
         uint32_t k;           // number of decode LUTs
         uint32_t n;           // bytes per thread
@@ -32,6 +36,11 @@ struct DFloat11DecompressDeviceOp {
         uint64_t n_elements;
         uint64_t n_bytes;
         uint32_t n_cores_override; // 0 = use all
+
+        uint32_t n_active_ranges;
+        std::array<uint32_t, MAX_DF11_CORES> elem_starts_host{};
+        std::array<uint32_t, MAX_DF11_CORES> elem_counts_host{};
+        std::array<uint32_t, MAX_DF11_CORES> bit_starts_host{};
     };
 
     struct tensor_args_t {
@@ -40,6 +49,9 @@ struct DFloat11DecompressDeviceOp {
         const Tensor& luts;
         const Tensor& gaps;
         const Tensor& output_positions;
+        const Tensor& elem_starts;
+        const Tensor& elem_counts;
+        const Tensor& bit_starts;
     };
 
     using spec_return_value_t   = ttnn::TensorSpec;
@@ -47,9 +59,10 @@ struct DFloat11DecompressDeviceOp {
 
     struct MultiCore {
         struct shared_variables_t {
-            tt::tt_metal::KernelHandle reader_id;
-            tt::tt_metal::KernelHandle compute_id;
-            tt::tt_metal::KernelHandle writer_id;
+            std::vector<tt::tt_metal::KernelHandle> reader_ids;
+            std::vector<tt::tt_metal::KernelHandle> compute_ids;
+            std::vector<tt::tt_metal::KernelHandle> writer_ids;
+            std::vector<tt::tt_metal::CoreCoord> cores;
             std::size_t n_active_cores;
         };
         using cached_program_t = ttnn::device_operation::CachedProgram<shared_variables_t>;
@@ -73,6 +86,8 @@ struct DFloat11DecompressDeviceOp {
 
     static void validate_on_program_cache_miss(
         const operation_attributes_t&, const tensor_args_t&);
+    static void validate_on_program_cache_hit(
+        const operation_attributes_t&, const tensor_args_t&);
 
     static spec_return_value_t compute_output_specs(
         const operation_attributes_t&, const tensor_args_t&);
@@ -90,6 +105,12 @@ Tensor dfloat11_decompress(
     const Tensor& luts,
     const Tensor& gaps,
     const Tensor& output_positions,
+    const Tensor& elem_starts,
+    const Tensor& elem_counts,
+    const Tensor& bit_starts,
+    const std::vector<uint32_t>& elem_starts_host,
+    const std::vector<uint32_t>& elem_counts_host,
+    const std::vector<uint32_t>& bit_starts_host,
     uint32_t k, uint32_t n, uint32_t T, uint32_t B,
     uint32_t R, uint32_t C, uint32_t R_pad, uint32_t C_pad,
     uint64_t n_elements, uint64_t n_bytes,

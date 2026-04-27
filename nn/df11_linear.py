@@ -5,10 +5,12 @@ import os
 import time
 from typing import Optional, Dict, Any
 
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 from loguru import logger
+
+from ._df11_split import compute_core_ranges, DEFAULT_MAX_CORES
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -19,15 +21,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 
 class DF11Linear(nn.Module):
-    """Linear layer that decompresses DFloat11-TT weights on-the-fly.
-
-    The weight is stored in compressed form as a set of device tensors.
-    In forward(), it is decompressed to BF16, the matmul is executed, and
-    the materialized weight is either freed or cached for token-generation
-    reuse, depending on DFLOAT11_CACHE_WEIGHTS.
-
-    Bias (if any) is stored uncompressed as a regular float buffer.
-    """
+    """Linear layer that decompresses DFloat11-TT weights on-the-fly."""
 
     def __init__(
         self,
@@ -37,57 +31,90 @@ class DF11Linear(nn.Module):
         device: Optional[Any] = None,
     ) -> None:
         super().__init__()
-        self.in_features  = in_features
+        self.in_features = in_features
         self.out_features = out_features
 
-        # Compressed bundle metadata (scalars)
-        self._k:          int = 0
-        self._n:          int = 0
-        self._T:          int = 0
-        self._B:          int = 0
-        self._R_pad:      int = 0
-        self._C_pad:      int = 0
+        self._k: int = 0
+        self._n: int = 0
+        self._T: int = 0
+        self._B: int = 0
+        self._R_pad: int = 0
+        self._C_pad: int = 0
         self._n_elements: int = 0
-        self._n_bytes:    int = 0
+        self._n_bytes: int = 0
 
-        # These are TTNN device tensors, not torch.Tensor buffers.  Keep them as
-        # plain attributes so PyTorch does not try to place them in state_dict().
         self._enc_exp = None
         self._sign_mant = None
         self._luts = None
         self._gaps = None
         self._outpos = None
+
+        self._outpos_host: Optional[np.ndarray] = None
+        self._elem_starts = None
+        self._elem_counts = None
+        self._bit_starts = None
+        self._elem_starts_host: Optional[np.ndarray] = None
+        self._elem_counts_host: Optional[np.ndarray] = None
+        self._bit_starts_host: Optional[np.ndarray] = None
+
         self.bias = None
         self._has_bias = bias
 
-        self._tt_device = device  # Tenstorrent device handle (not a torch device)
+        self._tt_device = device
         self._module_name = "<unnamed>"
         self._cached_weight_linear_tt = None
 
     def load_bundle(self, bundle: Dict, tt_device: Any) -> None:
-        """Load a compressed bundle dict (from compress.load_model_bundle) onto TT device."""
+        """Load a compressed bundle dict onto the TT device."""
         import ttnn
 
-        self._k          = int(bundle["k"])
-        self._n          = int(bundle["n"])
-        self._T          = int(bundle["T"])
-        self._B          = int(bundle["B"])
-        self._R_pad      = int(bundle["R_pad"])
-        self._C_pad      = int(bundle["C_pad"])
+        self._k = int(bundle["k"])
+        self._n = int(bundle["n"])
+        self._T = int(bundle["T"])
+        self._B = int(bundle["B"])
+        self._R_pad = int(bundle["R_pad"])
+        self._C_pad = int(bundle["C_pad"])
         self._n_elements = int(bundle["n_elements"])
-        self._n_bytes    = int(bundle["n_bytes"])
-        self._tt_device  = tt_device
+        self._n_bytes = int(bundle["n_bytes"])
+        self._tt_device = tt_device
 
         def _to_ttnn_uint8(arr: np.ndarray) -> ttnn.Tensor:
             t = torch.from_numpy(arr.flatten().astype(np.uint8))
-            return ttnn.from_torch(t, dtype=ttnn.uint8, device=tt_device,
-                                   layout=ttnn.ROW_MAJOR_LAYOUT)
+            return ttnn.from_torch(
+                t,
+                dtype=ttnn.uint8,
+                device=tt_device,
+                layout=ttnn.ROW_MAJOR_LAYOUT,
+            )
 
-        self._enc_exp   = _to_ttnn_uint8(bundle["encoded_exponent"])
+        def _to_ttnn_uint32(arr: np.ndarray) -> ttnn.Tensor:
+            t = torch.from_numpy(arr.flatten().astype(np.uint32))
+            return ttnn.from_torch(
+                t,
+                dtype=ttnn.uint32,
+                device=tt_device,
+                layout=ttnn.ROW_MAJOR_LAYOUT,
+            )
+
+        self._enc_exp = _to_ttnn_uint8(bundle["encoded_exponent"])
         self._sign_mant = _to_ttnn_uint8(bundle["sign_mantissa"])
-        self._luts      = _to_ttnn_uint8(bundle["luts"])
-        self._gaps      = _to_ttnn_uint8(bundle["gaps"])
-        self._outpos    = _to_ttnn_uint8(bundle["output_positions"].view(np.uint8))
+        self._luts = _to_ttnn_uint8(bundle["luts"])
+        self._gaps = _to_ttnn_uint8(bundle["gaps"])
+
+        self._outpos_host = np.array(bundle["output_positions"], dtype=np.uint32, copy=True)
+        self._outpos = _to_ttnn_uint8(self._outpos_host.view(np.uint8))
+
+        # Compute page-aligned per-core ranges with correct bit_starts.
+        # See nn/_df11_split.py for the rationale.
+        self._elem_starts_host, self._elem_counts_host, self._bit_starts_host = (
+            compute_core_ranges(
+                bundle, self._R_pad, self._C_pad, max_cores=DEFAULT_MAX_CORES
+            )
+        )
+
+        self._elem_starts = _to_ttnn_uint32(self._elem_starts_host)
+        self._elem_counts = _to_ttnn_uint32(self._elem_counts_host)
+        self._bit_starts = _to_ttnn_uint32(self._bit_starts_host)
 
     def clear_weight_cache(self) -> None:
         """Release the cached decompressed/transposed TT weight, if present."""
@@ -101,60 +128,90 @@ class DF11Linear(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Decompress or reuse weights, then run matmul."""
         import ttnn
+
         try:
             from dfloat11_tt_cpp import dfloat11_decompress as _cpp_decompress
-        except ImportError:
-            raise RuntimeError(
-                "dfloat11_tt_cpp C++ extension not built. Run 'make build' first."
-            )
+        except ImportError as e:
+            raise RuntimeError(f"dfloat11_tt_cpp import failed: {e}")
 
         trace = _env_flag("DFLOAT11_TRACE_LINEAR", False)
         cache_weights = _env_flag("DFLOAT11_CACHE_WEIGHTS", True)
-        if trace:
-            t0 = time.perf_counter()
-            cache_state = "cached" if self._cached_weight_linear_tt is not None else "cold"
-            logger.info(
-                f"[df11] {self._module_name}: start "
-                f"shape=[{self.out_features},{self.in_features}] k={self._k} "
-                f"cache={cache_state if cache_weights else 'off'}"
-            )
+
+        t0 = time.perf_counter() if trace else 0.0
+        decompress_ms = 0.0
+        layout_ms = 0.0
 
         if cache_weights and self._cached_weight_linear_tt is not None:
             weight_linear_tt = self._cached_weight_linear_tt
+            if trace:
+                logger.info(
+                    f"[df11] {self._module_name}: cache hit "
+                    f"shape=[{self.out_features},{self.in_features}]"
+                )
         else:
-            # Decompress weight on-device, convert to tile layout, and transpose
-            # once into the right orientation for ttnn.linear.
+            td0 = time.perf_counter() if trace else 0.0
             weight_tt = _cpp_decompress(
-                self._enc_exp, self._sign_mant, self._luts, self._gaps, self._outpos,
-                self._k, self._n, self._T, self._B,
-                self.out_features, self.in_features,
-                self._R_pad, self._C_pad,
-                self._n_elements, self._n_bytes,
+                self._enc_exp,
+                self._sign_mant,
+                self._luts,
+                self._gaps,
+                self._outpos,
+                self._elem_starts,
+                self._elem_counts,
+                self._bit_starts,
+                self._elem_starts_host.tolist(),
+                self._elem_counts_host.tolist(),
+                self._bit_starts_host.tolist(),
+                self._k,
+                self._n,
+                self._T,
+                self._B,
+                self.out_features,
+                self.in_features,
+                self._R_pad,
+                self._C_pad,
+                self._n_elements,
+                self._n_bytes,
             )
+            if trace:
+                decompress_ms = (time.perf_counter() - td0) * 1000.0
+
+            tl0 = time.perf_counter() if trace else 0.0
             weight_tiled_tt = ttnn.to_layout(weight_tt, ttnn.TILE_LAYOUT)
+            weight_tt.deallocate(force=True)
             weight_linear_tt = ttnn.transpose(weight_tiled_tt, 0, 1)
             weight_tiled_tt.deallocate(force=True)
-            weight_tt.deallocate(force=True)
+            if trace:
+                layout_ms = (time.perf_counter() - tl0) * 1000.0
 
             if cache_weights:
                 self._cached_weight_linear_tt = weight_linear_tt
 
-        # Convert input to ttnn if needed
+            if trace:
+                logger.info(
+                    f"[df11] {self._module_name}: cold decode "
+                    f"shape=[{self.out_features},{self.in_features}] k={self._k} "
+                    f"decompress={decompress_ms:.2f}ms layout={layout_ms:.2f}ms"
+                )
+
         input_is_torch = isinstance(x, torch.Tensor)
         if input_is_torch:
-            x_tt = ttnn.from_torch(x, dtype=ttnn.bfloat16, device=self._tt_device,
-                                   layout=ttnn.TILE_LAYOUT)
+            x_tt = ttnn.from_torch(
+                x,
+                dtype=ttnn.bfloat16,
+                device=self._tt_device,
+                layout=ttnn.TILE_LAYOUT,
+            )
         else:
             x_tt = x
 
-        # ttnn.linear(a, b) computes a @ b.  PyTorch Linear stores weight as
-        # [out_features, in_features], so transpose before passing it to TTNN.
+        tm0 = time.perf_counter() if trace else 0.0
         out_tt = ttnn.linear(x_tt, weight_linear_tt, bias=self.bias)
+        matmul_ms = (time.perf_counter() - tm0) * 1000.0 if trace else 0.0
 
         if not cache_weights:
             weight_linear_tt.deallocate(force=True)
 
-        # Return as torch tensor if input was torch
         if input_is_torch:
             out = ttnn.to_torch(out_tt)
             try:
@@ -163,10 +220,19 @@ class DF11Linear(nn.Module):
             except Exception:
                 pass
             if trace:
-                logger.info(f"[df11] {self._module_name}: done in {time.perf_counter() - t0:.2f}s")
+                total_ms = (time.perf_counter() - t0) * 1000.0
+                logger.info(
+                    f"[df11] {self._module_name}: total={total_ms:.2f}ms "
+                    f"matmul={matmul_ms:.2f}ms"
+                )
             return out
+
         if trace:
-            logger.info(f"[df11] {self._module_name}: done in {time.perf_counter() - t0:.2f}s")
+            total_ms = (time.perf_counter() - t0) * 1000.0
+            logger.info(
+                f"[df11] {self._module_name}: total={total_ms:.2f}ms "
+                f"matmul={matmul_ms:.2f}ms"
+            )
         return out_tt
 
     def extra_repr(self) -> str:

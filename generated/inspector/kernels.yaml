@@ -1,18 +1,18 @@
 - kernel:
     watcher_kernel_id: 3
     name: cq_dispatch_subordinate
-    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_dispatch_subordinate/7855866484309922655/
+    path: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_dispatch_subordinate/9303553105986000748/
     source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
-    program_id: 0
-- kernel:
-    watcher_kernel_id: 2
-    name: cq_dispatch
-    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_dispatch/8137169236245640059/
-    source: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
     program_id: 0
 - kernel:
     watcher_kernel_id: 1
     name: cq_prefetch
-    path: /home/tomasissac/.cache/tt-metal-cache/14977672337985265529/kernels/cq_prefetch/8634524191443905710/
+    path: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_prefetch/1220993882025971904/
     source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
+    program_id: 0
+- kernel:
+    watcher_kernel_id: 2
+    name: cq_dispatch
+    path: /home/haaniasiddiqui/.cache/tt-metal-cache/6684e70516/10813412111789313594/kernels/cq_dispatch/1297578146234312010/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
     program_id: 0

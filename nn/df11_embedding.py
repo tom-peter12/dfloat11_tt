@@ -11,6 +11,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from loguru import logger
 
+from ._df11_split import compute_core_ranges, DEFAULT_MAX_CORES
+
 
 def _env_flag(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name)
@@ -49,6 +51,14 @@ class DF11Embedding(nn.Module):
         self._gaps = None
         self._outpos = None
 
+        self._outpos_host: Optional[np.ndarray] = None
+        self._elem_starts = None
+        self._elem_counts = None
+        self._bit_starts = None
+        self._elem_starts_host: Optional[np.ndarray] = None
+        self._elem_counts_host: Optional[np.ndarray] = None
+        self._bit_starts_host: Optional[np.ndarray] = None
+
         self._tt_device = device
         self._module_name = "<unnamed>"
         self._cached_weight_torch: Optional[torch.Tensor] = None
@@ -75,11 +85,34 @@ class DF11Embedding(nn.Module):
                 layout=ttnn.ROW_MAJOR_LAYOUT,
             )
 
+        def _to_ttnn_uint32(arr: np.ndarray) -> ttnn.Tensor:
+            t = torch.from_numpy(arr.flatten().astype(np.uint32))
+            return ttnn.from_torch(
+                t,
+                dtype=ttnn.uint32,
+                device=tt_device,
+                layout=ttnn.ROW_MAJOR_LAYOUT,
+            )
+
         self._enc_exp = _to_ttnn_uint8(bundle["encoded_exponent"])
         self._sign_mant = _to_ttnn_uint8(bundle["sign_mantissa"])
         self._luts = _to_ttnn_uint8(bundle["luts"])
         self._gaps = _to_ttnn_uint8(bundle["gaps"])
-        self._outpos = _to_ttnn_uint8(bundle["output_positions"].view(np.uint8))
+
+        self._outpos_host = np.asarray(bundle["output_positions"], dtype=np.uint32).copy()
+        self._outpos = _to_ttnn_uint8(self._outpos_host.view(np.uint8))
+
+        # Compute page-aligned per-core ranges with correct bit_starts.
+        # See nn/_df11_split.py for the rationale.
+        self._elem_starts_host, self._elem_counts_host, self._bit_starts_host = (
+            compute_core_ranges(
+                bundle, self._R_pad, self._C_pad, max_cores=DEFAULT_MAX_CORES
+            )
+        )
+
+        self._elem_starts = _to_ttnn_uint32(self._elem_starts_host)
+        self._elem_counts = _to_ttnn_uint32(self._elem_counts_host)
+        self._bit_starts = _to_ttnn_uint32(self._bit_starts_host)
 
     def clear_weight_cache(self) -> None:
         self._cached_weight_torch = None
@@ -89,10 +122,8 @@ class DF11Embedding(nn.Module):
 
         try:
             from dfloat11_tt_cpp import dfloat11_decompress as _cpp_decompress
-        except ImportError:
-            raise RuntimeError(
-                "dfloat11_tt_cpp C++ extension not built. Run 'make build' first."
-            )
+        except ImportError as e:
+            raise RuntimeError(f"dfloat11_tt_cpp import failed: {e}")
 
         weight_tt = _cpp_decompress(
             self._enc_exp,
@@ -100,6 +131,12 @@ class DF11Embedding(nn.Module):
             self._luts,
             self._gaps,
             self._outpos,
+            self._elem_starts,
+            self._elem_counts,
+            self._bit_starts,
+            self._elem_starts_host.tolist(),
+            self._elem_counts_host.tolist(),
+            self._bit_starts_host.tolist(),
             self._k,
             self._n,
             self._T,

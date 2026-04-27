@@ -14,8 +14,8 @@ PYTHON_BIN="${PYTHON_BIN:-$TT_METAL_HOME/python_env/bin/python3}"
 CONFIG="${1:-eval/configs/smollm2-135m-one-layer-smoke.yaml}"
 
 export TT_METAL_HOME
-export TT_METAL_VISIBLE_DEVICES="${TT_METAL_VISIBLE_DEVICES:-0}"
-export TT_MESH_GRAPH_DESC_PATH="${TT_MESH_GRAPH_DESC_PATH:-$TT_METAL_HOME/tt_metal/fabric/mesh_graph_descriptors/p150_mesh_graph_descriptor.textproto}"
+unset TT_METAL_VISIBLE_DEVICES
+unset TT_MESH_GRAPH_DESC_PATH
 export DFLOAT11_TT_DEVICE_ID="${DFLOAT11_TT_DEVICE_ID:-3}"
 export DFLOAT11_TRACE_LINEAR="${DFLOAT11_TRACE_LINEAR:-1}"
 export DFLOAT11_CACHE_WEIGHTS="${DFLOAT11_CACHE_WEIGHTS:-1}"

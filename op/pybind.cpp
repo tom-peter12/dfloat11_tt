@@ -3,6 +3,7 @@
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/optional.h>
+#include <nanobind/stl/vector.h>
 
 #include "dfloat11_decompress.hpp"
 
@@ -18,20 +19,43 @@ NB_MODULE(dfloat11_tt_cpp, m) {
            const ttnn::Tensor& luts,
            const ttnn::Tensor& gaps,
            const ttnn::Tensor& output_positions,
+           const ttnn::Tensor& elem_starts,
+           const ttnn::Tensor& elem_counts,
+           const ttnn::Tensor& bit_starts,
+           const std::vector<uint32_t>& elem_starts_host,
+           const std::vector<uint32_t>& elem_counts_host,
+           const std::vector<uint32_t>& bit_starts_host,
            uint32_t k, uint32_t n, uint32_t T, uint32_t B,
            uint32_t R, uint32_t C, uint32_t R_pad, uint32_t C_pad,
            uint64_t n_elements, uint64_t n_bytes,
            uint32_t n_cores_override) -> ttnn::Tensor
         {
             return ttnn::dfloat11_decompress(
-                encoded_exponent, sign_mantissa, luts, gaps, output_positions,
-                k, n, T, B, R, C, R_pad, C_pad, n_elements, n_bytes, n_cores_override);
+                encoded_exponent,
+                sign_mantissa,
+                luts,
+                gaps,
+                output_positions,
+                elem_starts,
+                elem_counts,
+                bit_starts,
+                elem_starts_host,
+                elem_counts_host,
+                bit_starts_host,
+                k, n, T, B, R, C, R_pad, C_pad,
+                n_elements, n_bytes, n_cores_override);
         },
         nb::arg("encoded_exponent"),
         nb::arg("sign_mantissa"),
         nb::arg("luts"),
         nb::arg("gaps"),
         nb::arg("output_positions"),
+        nb::arg("elem_starts"),
+        nb::arg("elem_counts"),
+        nb::arg("bit_starts"),
+        nb::arg("elem_starts_host"),
+        nb::arg("elem_counts_host"),
+        nb::arg("bit_starts_host"),
         nb::arg("k"),
         nb::arg("n"),
         nb::arg("T"),
@@ -42,15 +66,6 @@ NB_MODULE(dfloat11_tt_cpp, m) {
         nb::arg("C_pad"),
         nb::arg("n_elements"),
         nb::arg("n_bytes"),
-        nb::arg("n_cores_override") = 0u,
-        R"doc(
-dfloat11_decompress(encoded_exponent, sign_mantissa, luts, gaps, output_positions,
-                    k, n, T, B, R, C, R_pad, C_pad, n_elements, n_bytes,
-                    n_cores_override=0) -> ttnn.Tensor
-
-Decompress a DFloat11-TT bundle on-device using Tenstorrent Blackhole cores.
-
-Returns a row-major BF16 tensor of shape (R, C) in device DRAM.
-        )doc"
+        nb::arg("n_cores_override") = 0u
     );
 }

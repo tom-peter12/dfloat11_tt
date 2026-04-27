@@ -7,3 +7,6 @@
 - Prompt: The capital of France is
 - BF16 completion:  Paris. Paris is
 - DF11 completion:  Paris. Paris is
+- BF16 generation: 0.12s
+- DF11 generation: 0.22s
+- DF11 tokens/sec: 17.89
